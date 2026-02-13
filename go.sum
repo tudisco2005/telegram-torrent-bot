@@ -1,0 +1,12 @@
+github.com/dustin/go-humanize v1.0.1 h1:GzkhY7T5VNhEkwH0PVJgjz+fX1rhBrR7pRT3mDkpeCY=
+github.com/dustin/go-humanize v1.0.1/go.mod h1:Mu1zIs6XwVuF/gI1OepvI0qD18qycQx+mFykh5fBlto=
+github.com/pyed/tailer v0.0.0-20190130224839-376cd2db7eb6 h1:IfxKk9cYu0O7JQM65yS5NfN2/MFMVp3b8ADnKnmzNTQ=
+github.com/pyed/tailer v0.0.0-20190130224839-376cd2db7eb6/go.mod h1:cqd2XE6+P8ftxqnrxv0DdQq9BwQN1EM80kS7ikCrrO0=
+github.com/pyed/transmission v0.0.0-20240821061748-4cfdbb917ad4 h1:iBKuJ8pIyqtM21VQBZmpKNQYQ02QEOJUnEIN/DKPfbc=
+github.com/pyed/transmission v0.0.0-20240821061748-4cfdbb917ad4/go.mod h1:JZPP/NY8L94tuBOeK82X1PZWaiaC3b/v9F0a6lzHnng=
+github.com/technoweenie/multipartstreamer v1.0.1 h1:XRztA5MXiR1TIRHxH2uNxXxaIkKQDeX7m2XsSOlQEnM=
+github.com/technoweenie/multipartstreamer v1.0.1/go.mod h1:jNVxdtShOxzAsukZwTSw6MDx5eUJoiEBsSvzDU9uzog=
+golang.org/x/exp/winfsnotify v0.1.0-deprecated h1:M7lbbgV6cWQoaSqrnFgjMeiK7ufbMPL4EA+up34yZrs=
+golang.org/x/exp/winfsnotify v0.1.0-deprecated/go.mod h1:YHWCUtU1xwIKaVtwKrfr6tEmkeJMN5A2yCcNUNmIdKk=
+gopkg.in/telegram-bot-api.v4 v4.6.4 h1:hpHWhzn4jTCsAJZZ2loNKfy2QWyPDRJVl3aTFXeMW8g=
+gopkg.in/telegram-bot-api.v4 v4.6.4/go.mod h1:5DpGO5dbumb40px+dXcwCpcjmeHNYLpk0bp3XRNvWDM=

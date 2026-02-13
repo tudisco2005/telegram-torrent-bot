@@ -1,1 +1,1 @@
-
+1. install trasmission with default config

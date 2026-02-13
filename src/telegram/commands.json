@@ -1,0 +1,292 @@
+{
+  "commands": [
+    {
+      "name": "list",
+      "aliases": [
+        "li",
+        "ls"
+      ],
+      "description": "Lists all the torrents",
+      "output_format": "plain",
+      "list_output": true,
+      "output_string": "<%d> %s\n"
+    },
+    {
+      "name": "head",
+      "aliases": [
+        "he"
+      ],
+      "description": "Lists the first n torrents",
+      "example": "/head 10",
+      "output_format": "markdown",
+      "list_output": true,
+      "output_string": "`<%d>` *%s*\n%s *%s* of *%s* (*%.1f%%*) ↓ *%s*  ↑ *%s* R: *%s*\n\n"
+    },
+    {
+      "name": "tail",
+      "aliases": [
+        "ta"
+      ],
+      "description": "Lists the last n torrents",
+      "example": "/tail 10",
+      "output_format": "markdown",
+      "list_output": true,
+      "output_string": "`<%d>` *%s*\n%s *%s* of *%s* (*%.1f%%*) ↓ *%s*  ↑ *%s* R: *%s*\n\n"
+    },
+    {
+      "name": "downs",
+      "aliases": [
+        "dg"
+      ],
+      "description": "Lists downloading torrents",
+      "output_format": "plain",
+      "list_output": true,
+      "output_string": "<%d> %s\n"
+    },
+    {
+      "name": "seeding",
+      "aliases": [
+        "sd"
+      ],
+      "description": "Lists seeding torrents",
+      "output_format": "plain",
+      "list_output": true,
+      "output_string": "<%d> %s\n"
+    },
+    {
+      "name": "paused",
+      "aliases": [
+        "pa"
+      ],
+      "description": "Lists paused torrents",
+      "output_format": "plain",
+      "list_output": true,
+      "output_string": "<%d> %s\n"
+    },
+    {
+      "name": "checking",
+      "aliases": [
+        "ch"
+      ],
+      "description": "Lists torrents being verified",
+      "output_format": "plain",
+      "list_output": true,
+      "output_string": "<%d> %s\n"
+    },
+    {
+      "name": "active",
+      "aliases": [
+        "ac"
+      ],
+      "description": "Lists actively uploading/downloading torrents",
+      "output_format": "markdown",
+      "list_output": true,
+      "output_string": "`<%d>` *%s*\n%s ↓ *%s*  ↑ *%s* R: *%s*\n\n"
+    },
+    {
+      "name": "errors",
+      "aliases": [
+        "er"
+      ],
+      "description": "Lists torrents with errors",
+      "output_format": "plain",
+      "list_output": true,
+      "output_string": "<%d> %s\n%s\n\n"
+    },
+    {
+      "name": "sort",
+      "aliases": [
+        "so"
+      ],
+      "description": "Manipulate sorting",
+      "example": "/sort [option]",
+      "output_format": "plain",
+      "list_output": false
+    },
+    {
+      "name": "trackers",
+      "aliases": [
+        "tr"
+      ],
+      "description": "Lists all trackers",
+      "output_format": "plain",
+      "list_output": true,
+      "output_string": "%d - %s\n"
+    },
+    {
+      "name": "downloaddir",
+      "aliases": [
+        "dd"
+      ],
+      "description": "Set download directory",
+      "example": "/downloaddir /path/to/directory",
+      "output_format": "plain",
+      "list_output": false
+    },
+    {
+      "name": "add",
+      "aliases": [
+        "ad"
+      ],
+      "description": "Add URLs or magnets",
+      "example": "/add <magnet-link> or /add <http-url>",
+      "output_format": "plain",
+      "list_output": false,
+      "output_string": "*Added:* %s"
+    },
+    {
+      "name": "search",
+      "aliases": [
+        "se"
+      ],
+      "description": "Search torrents by name",
+      "example": "/search <query>",
+      "output_format": "plain",
+      "list_output": true,
+      "output_string": "<%d> %s\n"
+    },
+    {
+      "name": "latest",
+      "aliases": [
+        "la"
+      ],
+      "description": "Lists newest torrents",
+      "example": "/latest 5",
+      "output_format": "plain",
+      "list_output": true,
+      "output_string": "<%d> %s\n"
+    },
+    {
+      "name": "info",
+      "aliases": [
+        "in"
+      ],
+      "description": "Get info about torrents",
+      "example": "/info <id1> <id2>",
+      "output_format": "markdown",
+      "list_output": false
+    },
+    {
+      "name": "stop",
+      "aliases": [
+        "sp"
+      ],
+      "description": "Stop torrents",
+      "example": "/stop <id1> <id2> or /stop all",
+      "output_format": "plain",
+      "list_output": false,
+      "output_string": "[%s] *stop:* %s"
+    },
+    {
+      "name": "start",
+      "aliases": [
+        "st"
+      ],
+      "description": "Start torrents",
+      "example": "/start <id1> <id2> or /start all",
+      "output_format": "plain",
+      "list_output": false,
+      "output_string": "[%s] *start:* %s"
+    },
+    {
+      "name": "check",
+      "aliases": [
+        "ck"
+      ],
+      "description": "Verify torrents",
+      "example": "/check <id1> <id2> or /check all",
+      "output_format": "plain",
+      "list_output": false,
+      "output_string": "[%s] *check:* %s"
+    },
+    {
+      "name": "del",
+      "aliases": [
+        "rm"
+      ],
+      "description": "Delete torrents",
+      "example": "/del <id1> <id2>",
+      "output_format": "plain",
+      "list_output": false,
+      "output_string": "*Deleted:* %s"
+    },
+    {
+      "name": "deldata",
+      "aliases": [],
+      "description": "Delete torrents and their data",
+      "example": "/deldata <id1> <id2>",
+      "output_format": "plain",
+      "list_output": false,
+      "output_string": "*Deleted:* %s"
+    },
+    {
+      "name": "stats",
+      "aliases": [
+        "sa"
+      ],
+      "description": "Show transmission stats",
+      "output_format": "markdown",
+      "list_output": false,
+      "output_string": "\nTotal: *%d*\nActive: *%d*\nPaused: *%d*\n\n_Current Stats_\nDownloaded: *%s*\nUploaded: *%s*\nRunning time: *%s*\n\n_Accumulative Stats_\nSessions: *%d*\nDownloaded: *%s*\nUploaded: *%s*\nTotal Running time: *%s*\n"
+    },
+    {
+      "name": "downlimit",
+      "aliases": [
+        "dl"
+      ],
+      "description": "Set download speed limit",
+      "example": "/downlimit 1024",
+      "output_format": "plain",
+      "list_output": false
+    },
+    {
+      "name": "uplimit",
+      "aliases": [
+        "ul"
+      ],
+      "description": "Set upload speed limit",
+      "example": "/uplimit 512",
+      "output_format": "plain",
+      "list_output": false
+    },
+    {
+      "name": "speed",
+      "aliases": [
+        "ss"
+      ],
+      "description": "Show upload/download speeds",
+      "output_format": "plain",
+      "list_output": false,
+      "output_string": "↓ %s  ↑ %s"
+    },
+    {
+      "name": "count",
+      "aliases": [
+        "co"
+      ],
+      "description": "Show torrents count per status",
+      "output_format": "plain",
+      "list_output": false,
+      "output_string": "Downloading: %d\nSeeding: %d\nPaused: %d\nVerifying: %d\n\n- Waiting to -\nDownload: %d\nSeed: %d\nVerify: %d\n\nTotal: %d"
+    },
+    {
+      "name": "help",
+      "aliases": [
+        "h"
+      ],
+      "description": "Show help message",
+      "output_format": "markdown",
+      "list_output": false
+    },
+    {
+      "name": "version",
+      "aliases": [
+        "ver"
+      ],
+      "description": "Show version numbers",
+      "output_format": "markdown",
+      "list_output": false,
+      "output_string": "Transmission *%s*\nTransmission-telegram *%s*"
+    }
+  ]
+}

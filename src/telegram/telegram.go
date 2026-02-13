@@ -2,10 +2,10 @@ package telegram
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"os"
 	"strings"
-	"fmt"
 	"time"
 
 	"github.com/pyed/transmission"
@@ -17,18 +17,31 @@ import (
 
 // Command represents a command definition from JSON
 type Command struct {
-	Name         string   `json:"name"`
-	Aliases      []string `json:"aliases"`
-	Description  string   `json:"description"`
-	Example      string   `json:"example,omitempty"`
-	OutputFormat string   `json:"output_format,omitempty"` // "markdown" or "plain"
-	OutputString string   `json:"output_string,omitempty"` // Format string for command output (uses fmt.Sprintf placeholders)
-	ListOutput   bool     `json:"list_output,omitempty"`   // when true, output_string formats each line of a list
+	Name            string   `json:"name"`
+	CommandCategory string   `json:"command_category"`
+	Aliases         []string `json:"aliases"`
+	Description     string   `json:"description"`
+	Example         string   `json:"example,omitempty"`
+	OutputFormat    string   `json:"output_format,omitempty"` // "markdown" or "plain"
+	OutputString    string   `json:"output_string,omitempty"` // Format string for command output (uses fmt.Sprintf placeholders)
+	ListOutput      bool     `json:"list_output,omitempty"`   // when true, output_string formats each line of a list
 }
 
 // Commands holds all command definitions
 type Commands struct {
 	Commands []Command `json:"commands"`
+}
+
+// Category represents a command category definition from JSON
+type Category struct {
+	ID    string `json:"id"`
+	Emoji string `json:"emoji"`
+	Name  string `json:"name"`
+}
+
+// Categories holds all category definitions
+type Categories struct {
+	Categories []Category `json:"categories"`
 }
 
 // LoadCommands loads command definitions from JSON file
@@ -45,6 +58,22 @@ func LoadCommands(path string) (*Commands, error) {
 		return nil, err
 	}
 	return &cmds, nil
+}
+
+// LoadCategories loads category definitions from JSON file
+func LoadCategories(path string) (*Categories, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	var cats Categories
+	decoder := json.NewDecoder(file)
+	if err := decoder.Decode(&cats); err != nil {
+		return nil, err
+	}
+	return &cats, nil
 }
 
 // BotConfig holds telegram bot configuration
@@ -181,12 +210,12 @@ func Start(cfg *BotConfig) {
 		// ignore non masters
 		if !cfg.Masters.Contains(update.Message.From.UserName) {
 			if cfg.Verbose {
-				cfg.Logger.Printf("[DEBUG] Ignoring message: user %s is not a master (masters: %v)", 
+				cfg.Logger.Printf("[DEBUG] Ignoring message: user %s is not a master (masters: %v)",
 					update.Message.From.UserName, cfg.Masters)
 			}
 			continue
 		}
-		
+
 		if cfg.Verbose {
 			cfg.Logger.Printf("[DEBUG] User %s is authorized master", update.Message.From.UserName)
 		}
@@ -206,7 +235,7 @@ func Start(cfg *BotConfig) {
 
 		// tokenize the update
 		tokens := strings.Split(update.Message.Text, " ")
-		
+
 		// Skip if no tokens
 		if len(tokens) == 0 || tokens[0] == "" {
 			if cfg.Verbose {
@@ -224,10 +253,7 @@ func Start(cfg *BotConfig) {
 		}
 
 		// Extract command and remove '/' prefix if present
-		command := strings.ToLower(tokens[0])
-		if strings.HasPrefix(command, "/") {
-			command = command[1:]
-		}
+		command := strings.TrimPrefix(strings.ToLower(tokens[0]), "/")
 		args := tokens[1:]
 
 		if cfg.Verbose {
@@ -242,31 +268,75 @@ func Start(cfg *BotConfig) {
 // generateHelpMessage creates a formatted help message from commands
 func generateHelpMessage(cmds *Commands) string {
 	var buf strings.Builder
-	buf.WriteString("*Available Commands:*\n\n")
+	buf.WriteString("📋 *Available Commands*\n\n")
 
+	// Load categories from JSON
+	cats, err := LoadCategories("telegram/categories.json")
+	if err != nil {
+		// Fallback: return a simple help message if categories file is not found
+		buf.WriteString("_Error loading command categories. Please try again later._")
+		return buf.String()
+	}
+
+	// Build maps from categories
+	categoryEmojis := make(map[string]string)
+	categoryNames := make(map[string]string)
+	categoryOrder := []string{}
+
+	for _, cat := range cats.Categories {
+		categoryEmojis[cat.ID] = cat.Emoji
+		categoryNames[cat.ID] = cat.Name
+		categoryOrder = append(categoryOrder, cat.ID)
+	}
+
+	// Group commands by category
+	categoryMap := make(map[string][]Command)
 	for _, cmd := range cmds.Commands {
-		// Build command with aliases
-		cmdStr := "*" + cmd.Name + "*"
-		if len(cmd.Aliases) > 0 {
-			cmdStr += " or *" + strings.Join(cmd.Aliases, "* or *") + "*"
-		}
-		buf.WriteString(cmdStr + "\n")
-		buf.WriteString(cmd.Description + "\n")
+		category := cmd.CommandCategory
+		categoryMap[category] = append(categoryMap[category], cmd)
+	}
 
-		// Add example if available
-		if cmd.Example != "" {
-			buf.WriteString("_Example:_ `" + cmd.Example + "`\n")
+	// Generate help for each category
+	for _, category := range categoryOrder {
+		commands, exists := categoryMap[category]
+		if !exists || len(commands) == 0 {
+			continue
+		}
+
+		// Write category header
+		emoji := categoryEmojis[category]
+		name := categoryNames[category]
+		buf.WriteString("*" + emoji + " " + name + "*\n")
+
+		// Write commands in this category
+		for _, cmd := range commands {
+			// Build command line: - `/command` or `/alias1` or `/alias2` - description
+			cmdLine := "- `/" + cmd.Name + "`"
+			if len(cmd.Aliases) > 0 {
+				for _, alias := range cmd.Aliases {
+					cmdLine += " or `/" + alias + "`"
+				}
+			}
+			cmdLine += " - " + cmd.Description
+			buf.WriteString(cmdLine + "\n")
+
+			// Add example if available
+			if cmd.Example != "" {
+				buf.WriteString("  _Example:_ `" + cmd.Example + "`\n")
+			}
 		}
 
 		buf.WriteString("\n")
 	}
 
-	buf.WriteString("- Prefix commands with '/' if you want to talk to your bot in a group.\n")
-	buf.WriteString("- report any issues [here](https://github.com/tudisco2005/telegram-torrent-bot)")
+	// Add footer
+	buf.WriteString("---\n\n")
+	buf.WriteString("💡 *Tips:*\n")
+	buf.WriteString("- Prefix commands with `/` if you want to talk to your bot in a group\n")
+	buf.WriteString("- Report any issues [here](https://github.com/tudisco2005/telegram-torrent-bot)")
 
 	return buf.String()
 }
-
 
 // getCanonicalName returns the canonical command name (from JSON) for a given input (name or alias).
 func getCanonicalName(cmds *Commands, input string) string {
@@ -290,7 +360,7 @@ type CommandHandler func(*handlers.Handler, tgbotapi.Update, []string, string)
 // buildCommandMap creates a map from command/alias names to handler functions
 func buildCommandMap(cmds *Commands) map[string]CommandHandler {
 	cmdMap := make(map[string]CommandHandler)
-	
+
 	// Map command names to their handler functions; handlers receive canonical command name for output_format
 	handlerMap := map[string]CommandHandler{
 		"list":        func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.List(u, a, c) },
@@ -321,7 +391,7 @@ func buildCommandMap(cmds *Commands) map[string]CommandHandler {
 		"count":       func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.Count(u, c) },
 		// Note: "version" and "help" are handled separately in dispatchCommand
 	}
-	
+
 	// Build map from JSON commands: map each command name and alias to its handler
 	for _, cmd := range cmds.Commands {
 		if handler, exists := handlerMap[cmd.Name]; exists {
@@ -331,7 +401,7 @@ func buildCommandMap(cmds *Commands) map[string]CommandHandler {
 			}
 		}
 	}
-	
+
 	return cmdMap
 }
 
@@ -339,11 +409,11 @@ func buildCommandMap(cmds *Commands) map[string]CommandHandler {
 func dispatchCommand(h *handlers.Handler, cfg *BotConfig, cmds *Commands, update tgbotapi.Update, command string, args []string) {
 	// Build command map from JSON (cache could be added here for performance)
 	cmdMap := buildCommandMap(cmds)
-	
+
 	if cfg.Verbose {
 		cfg.Logger.Printf("[DEBUG] Dispatching command: %s", command)
 	}
-	
+
 	// Handle special case for version command (needs VERSION string)
 	if command == "version" || command == "ver" {
 		if cfg.Verbose {
@@ -352,7 +422,7 @@ func dispatchCommand(h *handlers.Handler, cfg *BotConfig, cmds *Commands, update
 		h.Version(update, cfg.VERSION)
 		return
 	}
-	
+
 	// Handle help command (use output_format from JSON)
 	if command == "help" {
 		if cfg.Verbose {
@@ -363,7 +433,7 @@ func dispatchCommand(h *handlers.Handler, cfg *BotConfig, cmds *Commands, update
 		cfg.SendMessage.Send(helpMsg, update.Message.Chat.ID, useMarkdown)
 		return
 	}
-	
+
 	// Look up command in map and dispatch with canonical name for output_format
 	canonical := getCanonicalName(cmds, command)
 	if handler, exists := cmdMap[command]; exists && canonical != "" {
@@ -373,7 +443,7 @@ func dispatchCommand(h *handlers.Handler, cfg *BotConfig, cmds *Commands, update
 		handler(h, update, args, canonical)
 		return
 	}
-	
+
 	// Default: Check if it's a torrent file
 	if update.Message.Document != nil {
 		if cfg.Verbose {

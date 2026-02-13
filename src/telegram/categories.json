@@ -1,0 +1,34 @@
+{
+  "categories": [
+    {
+      "id": "list",
+      "emoji": "📊",
+      "name": "Listing Commands"
+    },
+    {
+      "id": "filter",
+      "emoji": "🔍",
+      "name": "Filtering Commands"
+    },
+    {
+      "id": "management",
+      "emoji": "⚙️",
+      "name": "Management Commands"
+    },
+    {
+      "id": "configuration",
+      "emoji": "📁",
+      "name": "Configuration Commands"
+    },
+    {
+      "id": "information",
+      "emoji": "📈",
+      "name": "Information Commands"
+    },
+    {
+      "id": "general",
+      "emoji": "ℹ️",
+      "name": "General Commands"
+    }
+  ]
+}

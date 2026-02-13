@@ -212,7 +212,7 @@ func (h *Handler) Info(ud tgbotapi.Update, tokens []string, cmd string) {
 				return
 			}
 			torrentName := h.Replacer.Replace(torrent.Name) // escape markdown
-			info := fmt.Sprintf("`<%d>` *%s*\n%s *%s* of *%s* (*%.1f%%*) ↓ *-*  ↑ *-* R: *-*\nDL: *-* UP: *-*\nAdded: *%s*, ETA: *-*\nTrackers: `%s`",
+			info := fmt.Sprintf("`<%d>` *%s*\n%s *%s* of *%s* (*-%%*) ↓ *-*  ↑ *-* R: *-*\nDL: *-* UP: *-*\nAdded: *%s*, ETA: *-*\nTrackers: `%s`",
 				torrent.ID, torrentName, torrent.TorrentStatus(), humanize.Bytes(torrent.Have()), humanize.Bytes(torrent.SizeWhenDone),
 				time.Unix(torrent.AddedDate, 0).Format(time.Stamp), trackers)
 

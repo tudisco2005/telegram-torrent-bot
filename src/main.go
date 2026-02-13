@@ -96,19 +96,3 @@ func main() {
 	// Start Telegram bot event loop
 	telegram.Start(botCfg)
 }
-
-// sendMessage sends a message to telegram with optional markdown
-func sendMessage(bot *tgbotapi.BotAPI, text string, chatID int64, markdown bool) int {
-	msg := tgbotapi.NewMessage(chatID, text)
-	msg.DisableWebPagePreview = true
-	if markdown {
-		msg.ParseMode = tgbotapi.ModeMarkdown
-	}
-
-	resp, err := bot.Send(msg)
-	if err != nil {
-		return 0
-	}
-
-	return resp.MessageID
-}

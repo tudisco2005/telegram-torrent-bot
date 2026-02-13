@@ -7,11 +7,12 @@
 cd "$(dirname "$0")/src" || exit 1
 
 # Verifica se il binario esiste, altrimenti compila
-if [ ! -f "./telegram-torrent-bot" ]; then
+if [ ! -f "../bin/telegram-torrent-bot" ]; then
     echo "Building the bot..."
-    go build -o telegram-torrent-bot || exit 1
+    go build -o ../bin/telegram-torrent-bot || exit 1
 fi
 
 # Esegui il bot con tutti gli argomenti passati
 # Se non vengono passati argomenti, il bot leggerà i valori dal file .env
-exec ./telegram-torrent-bot "$@"
+chmod +x ../bin/telegram-torrent-bot
+exec ../bin/telegram-torrent-bot "$@"

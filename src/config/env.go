@@ -10,15 +10,17 @@ import (
 
 // EnvConfig holds environment configuration values
 type EnvConfig struct {
-	BotToken     *string
-	Masters      *MasterSlice
-	RPCURL       *string
-	Username     *string
-	Password     *string
-	LogFile      *string
-	TransLogFile *string
-	NoLive       *bool
-	Verbose      *bool
+	BotToken               *string
+	Masters                *MasterSlice
+	RPCURL                 *string
+	Username               *string
+	Password               *string
+	LogFile                *string
+	TransLogFile           *string
+	DefaultTorrentLocation *string // directory where received .torrent files are saved before adding to Transmission
+	NoLive                 *bool
+	Verbose                *bool
+	UpdateMaxIterations    *int // max live-update iterations per message (0 = use Duration, no extra limit)
 }
 
 // LoadEnvironmentConfig loads configuration from .env file and environment variables
@@ -92,6 +94,13 @@ func LoadEnvironmentConfig(cfg *EnvConfig) {
 		}
 	}
 
+	// DefaultTorrentLocation: check DEFAULT_TORRENT_LOCATION
+	if cfg.DefaultTorrentLocation != nil && *cfg.DefaultTorrentLocation == "" {
+		if dir := os.Getenv("DEFAULT_TORRENT_LOCATION"); dir != "" {
+			*cfg.DefaultTorrentLocation = dir
+		}
+	}
+
 	// NoLive: check NO_LIVE
 	if cfg.NoLive != nil && !*cfg.NoLive {
 		if noLiveEnv := os.Getenv("NO_LIVE"); noLiveEnv != "" {
@@ -109,5 +118,37 @@ func LoadEnvironmentConfig(cfg *EnvConfig) {
 				*cfg.Verbose = true
 			}
 		}
+	}
+
+	// UpdateMaxIterations: check UPDATE_MAX_ITERATIONS (max live-update edits per message; 0 = disable live updates)
+	if cfg.UpdateMaxIterations != nil {
+		if v := os.Getenv("UPDATE_MAX_ITERATIONS"); v != "" {
+			if n, err := strconv.Atoi(v); err == nil && n >= 0 {
+				*cfg.UpdateMaxIterations = n
+			}
+		}
+	}
+
+	// Validate required parameters: panic if not set
+	if cfg.BotToken != nil && *cfg.BotToken == "" {
+		panic("config: required parameter TOKEN (or TT_BOTT) is not set")
+	}
+	if cfg.Masters != nil && len(*cfg.Masters) == 0 {
+		panic("config: required parameter MASTER is not set")
+	}
+	if cfg.UpdateMaxIterations == nil || *cfg.UpdateMaxIterations == 0 {
+		panic("config: required parameter UPDATE_MAX_ITERATIONS is not set")
+	}
+	if cfg.UpdateMaxIterations != nil && *cfg.UpdateMaxIterations < 0 {
+		panic("config: UPDATE_MAX_ITERATIONS must be greater than or equal to 0")
+	}
+	if cfg.Username == nil || *cfg.Username == "" {
+		panic("config: required parameter USERNAME is not set")
+	}
+	if cfg.Password == nil || *cfg.Password == "" {
+		panic("config: required parameter PASSWORD is not set")
+	}
+	if cfg.RPCURL == nil || *cfg.RPCURL == "" {
+		panic("config: required parameter RPC_URL is not set")
 	}
 }

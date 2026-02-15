@@ -82,15 +82,17 @@ type BotConfig struct {
 	Updates      <-chan tgbotapi.Update
 	Masters      config.MasterSlice
 	Client       *transmission.TransmissionClient
-	NoLive       bool
-	Interval     time.Duration
-	Duration     int
-	Logger       *log.Logger
+	NoLive               bool
+	Interval             time.Duration
+	Duration             int
+	UpdateMaxIterations  int // max live-update iterations per message (0 = use Duration)
+	Logger               *log.Logger
 	SendMessage  MessageSender
-	ChatID       int64
-	TransLogFile string
-	VERSION      string
-	Verbose      bool
+	ChatID                 int64
+	TransLogFile           string
+	DefaultTorrentLocation string // directory where received .torrent files are saved before adding to Transmission
+	VERSION                string
+	Verbose                bool
 }
 
 // MessageSender interface for sending messages
@@ -165,9 +167,12 @@ func Start(cfg *BotConfig) {
 	h := &handlers.Handler{
 		Bot:                   cfg.Bot,
 		Client:                cfg.Client,
+		BotToken:              cfg.Bot.Token,
+		DefaultTorrentLocation: cfg.DefaultTorrentLocation,
 		NoLive:                cfg.NoLive,
 		Interval:              cfg.Interval * time.Second,
 		Duration:              cfg.Duration,
+		UpdateMaxIterations:   cfg.UpdateMaxIterations,
 		Replacer:              utils.MarkdownReplacer,
 		SendMessage:           cfg.SendMessage,
 		Logger:                cfg.Logger,
@@ -226,7 +231,7 @@ func Start(cfg *BotConfig) {
 		}
 
 		// Skip empty messages
-		if update.Message.Text == "" {
+		if update.Message.Text == "" && update.Message.Document == nil {
 			if cfg.Verbose {
 				cfg.Logger.Printf("[DEBUG] Skipping empty message")
 			}
@@ -235,14 +240,6 @@ func Start(cfg *BotConfig) {
 
 		// tokenize the update
 		tokens := strings.Split(update.Message.Text, " ")
-
-		// Skip if no tokens
-		if len(tokens) == 0 || tokens[0] == "" {
-			if cfg.Verbose {
-				cfg.Logger.Printf("[DEBUG] Skipping: no tokens found")
-			}
-			continue
-		}
 
 		// preprocess message based on URL schema
 		if strings.HasPrefix(tokens[0], "magnet") || strings.HasPrefix(tokens[0], "http") {
@@ -332,7 +329,7 @@ func generateHelpMessage(cmds *Commands) string {
 	// Add footer
 	buf.WriteString("---\n\n")
 	buf.WriteString("💡 *Tips:*\n")
-	buf.WriteString("- Prefix commands with `/` if you want to talk to your bot in a group\n")
+	buf.WriteString("- Prefix commands with `/` if you want to use the bot in a group\n")
 	buf.WriteString("- Report any issues [here](https://github.com/tudisco2005/telegram-torrent-bot)")
 
 	return buf.String()

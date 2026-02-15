@@ -23,9 +23,10 @@ type AppConfig struct {
 	RPCURL       string
 	Username     string
 	Password     string
-	LogFile      string
-	TransLogFile string // Transmission log file
-	NoLive       bool
+	LogFile                 string
+	TransLogFile            string // Transmission log file
+	DefaultTorrentLocation  string // directory where received .torrent files are saved before adding to Transmission
+	NoLive                  bool
 
 	// transmission
 	Client *transmission.TransmissionClient
@@ -44,6 +45,8 @@ type AppConfig struct {
 	Interval time.Duration
 	// duration controls how many intervals will happen
 	Duration int
+	// max live-update iterations per message (0 = no limit); ensures next messages are processed
+	UpdateMaxIterations int
 
 	// verbose mode for debug logging
 	Verbose bool
@@ -53,9 +56,10 @@ func main() {
 	// Initialize configuration
 	cfg := &AppConfig{
 		Logger:   log.New(os.Stdout, "", log.LstdFlags),
-		Interval: 5,
-		Duration: 10,
-		Masters:  config.MasterSlice{},
+		Interval:            5,
+		Duration:            10,
+		UpdateMaxIterations: 0, // 0 = disable live updates
+		Masters:             config.MasterSlice{},
 	}
 
 	// Parse flags and initialize
@@ -82,15 +86,17 @@ func main() {
 		Updates:      cfg.Updates,
 		Masters:      cfg.Masters,
 		Client:       cfg.Client,
-		NoLive:       cfg.NoLive,
-		Interval:     cfg.Interval,
-		Duration:     cfg.Duration,
-		Logger:       cfg.Logger,
+		NoLive:               cfg.NoLive,
+		Interval:             cfg.Interval,
+		Duration:             cfg.Duration,
+		UpdateMaxIterations:  cfg.UpdateMaxIterations,
+		Logger:               cfg.Logger,
 		SendMessage:  &telegram.SimpleMessageSender{Bot: cfg.Bot, Logger: cfg.Logger, Verbose: cfg.Verbose},
-		ChatID:       cfg.ChatID,
-		TransLogFile: cfg.TransLogFile,
-		VERSION:      VERSION,
-		Verbose:      cfg.Verbose,
+		ChatID:                 cfg.ChatID,
+		TransLogFile:           cfg.TransLogFile,
+		DefaultTorrentLocation: cfg.DefaultTorrentLocation,
+		VERSION:                VERSION,
+		Verbose:                cfg.Verbose,
 	}
 
 	// Start Telegram bot event loop

@@ -16,9 +16,12 @@ import (
 type Handler struct {
 	Bot                   *tgbotapi.BotAPI
 	Client                *transmission.TransmissionClient
+	BotToken              string // used to download files from Telegram
+	DefaultTorrentLocation string // directory where received .torrent files are saved before adding to Transmission
 	NoLive                bool
 	Interval              time.Duration
 	Duration              int
+	UpdateMaxIterations   int // max live-update iterations per message (0 = disable live updates)
 	Replacer              StringReplacer
 	SendMessage           MessageSender
 	Logger                Logger
@@ -27,20 +30,11 @@ type Handler struct {
 	ListOutputByCommand   map[string]bool   // when true, output_string is used to format each line of list output
 }
 
-// FormatListLine formats a single line of list output. When list_output is true for the command, uses output_string from JSON; otherwise uses the provided template.
-func (h *Handler) FormatListLine(command string, defaultTemplate string, args ...interface{}) string {
-	if h.ListOutputByCommand[command] && h.OutputStringByCommand[command] != "" {
-		return fmt.Sprintf(h.OutputStringByCommand[command], args...)
-	}
-	return fmt.Sprintf(defaultTemplate, args...)
-}
-
-// FormatOutputString formats a string using output_string from commands.json if available, otherwise uses the provided template.
-func (h *Handler) FormatOutputString(command string, template string, args ...interface{}) string {
-	// If output_string is defined in JSON for this command, use it; otherwise use provided template
+// FormatOutputString formats a string using output_string from commands.json if available, otherwise uses "(RAW) %s".
+func (h *Handler) FormatOutputString(command string, args ...interface{}) string {
 	outputTemplate := h.OutputStringByCommand[command]
 	if outputTemplate == "" {
-		outputTemplate = template
+		outputTemplate = "(RAW) %s"
 	}
 	return fmt.Sprintf(outputTemplate, args...)
 }
@@ -90,14 +84,14 @@ func (h *Handler) List(ud tgbotapi.Update, tokens []string, cmd string) {
 		for i := range torrents {
 			for _, tracker := range torrents[i].Trackers {
 				if regx.MatchString(tracker.Announce) {
-					buf.WriteString(h.FormatListLine(cmd, "<%d> %s\n", torrents[i].ID, torrents[i].Name))
+					buf.WriteString(h.FormatOutputString(cmd, torrents[i].ID, torrents[i].Name))
 					break
 				}
 			}
 		}
 	} else { // if we did not get a query, list all torrents
 		for i := range torrents {
-			buf.WriteString(h.FormatListLine(cmd, "<%d> %s\n", torrents[i].ID, torrents[i].Name))
+			buf.WriteString(h.FormatOutputString(cmd, torrents[i].ID, torrents[i].Name))
 		}
 	}
 
@@ -143,7 +137,7 @@ func (h *Handler) Head(ud tgbotapi.Update, tokens []string, cmd string) {
 	buf := new(bytes.Buffer)
 	for i := range torrents[:n] {
 		torrentName := h.Replacer.Replace(torrents[i].Name) // escape markdown
-		buf.WriteString(h.FormatListLine(cmd, "`<%d>` *%s*\n%s *%s* of *%s* (*%.1f%%*) ↓ *%s*  ↑ *%s* R: *%s*\n\n",
+		buf.WriteString(h.FormatOutputString(cmd,
 			torrents[i].ID, torrentName, torrents[i].TorrentStatus(), humanize.Bytes(torrents[i].Have()),
 			humanize.Bytes(torrents[i].SizeWhenDone), torrents[i].PercentDone*100, humanize.Bytes(torrents[i].RateDownload),
 			humanize.Bytes(torrents[i].RateUpload), torrents[i].Ratio()))
@@ -156,42 +150,42 @@ func (h *Handler) Head(ud tgbotapi.Update, tokens []string, cmd string) {
 
 	msgID := h.SendWithFormat(ud.Message.Chat.ID, buf.String(), cmd)
 
-	if h.NoLive {
+	if h.NoLive || h.UpdateMaxIterations == 0 {
 		return
 	}
 
-	// keep the info live
-	for i := 0; i < h.Duration; i++ {
-		time.Sleep(time.Second * h.Interval)
-		buf.Reset()
-
-		torrents, err = h.Client.GetTorrents()
-		if err != nil {
-			continue // try again if some error happened
-		}
-
-		if len(torrents) < 1 {
-			break
-		}
-
-		// make sure that we stay in the boundaries
-		if n <= 0 || n > len(torrents) {
-			n = len(torrents)
-		}
-
-		for _, torrent := range torrents[:n] {
-			torrentName := h.Replacer.Replace(torrent.Name) // escape markdown
-			buf.WriteString(h.FormatListLine(cmd, "`<%d>` *%s*\n%s *%s* of *%s* (*%.1f%%*) ↓ *%s*  ↑ *%s* R: *%s*\n\n",
-				torrent.ID, torrentName, torrent.TorrentStatus(), humanize.Bytes(torrent.Have()),
-				humanize.Bytes(torrent.SizeWhenDone), torrent.PercentDone*100, humanize.Bytes(torrent.RateDownload),
-				humanize.Bytes(torrent.RateUpload), torrent.Ratio()))
-		}
-
-		// no need to check if it is empty, as if the buffer is empty telegram won't change the message
-		editConf := tgbotapi.NewEditMessageText(ud.Message.Chat.ID, msgID, buf.String())
-		editConf.ParseMode = tgbotapi.ModeMarkdown
-		h.Bot.Send(editConf)
+	iterations := h.Duration
+	if h.UpdateMaxIterations > 0 && h.UpdateMaxIterations < iterations {
+		iterations = h.UpdateMaxIterations
 	}
+	chatID := ud.Message.Chat.ID
+
+	go func() {
+		liveBuf := new(bytes.Buffer)
+		for i := 0; i < iterations; i++ {
+			time.Sleep(time.Second * h.Interval)
+			liveBuf.Reset()
+
+			torrents, err := h.Client.GetTorrents()
+			if err != nil || len(torrents) < 1 {
+				continue
+			}
+			nn := n
+			if nn <= 0 || nn > len(torrents) {
+				nn = len(torrents)
+			}
+			for _, torrent := range torrents[:nn] {
+				torrentName := h.Replacer.Replace(torrent.Name)
+				liveBuf.WriteString(h.FormatOutputString(cmd,
+					torrent.ID, torrentName, torrent.TorrentStatus(), humanize.Bytes(torrent.Have()),
+					humanize.Bytes(torrent.SizeWhenDone), torrent.PercentDone*100, humanize.Bytes(torrent.RateDownload),
+					humanize.Bytes(torrent.RateUpload), torrent.Ratio()))
+			}
+			editConf := tgbotapi.NewEditMessageText(chatID, msgID, liveBuf.String())
+			editConf.ParseMode = tgbotapi.ModeMarkdown
+			h.Bot.Send(editConf)
+		}
+	}()
 }
 
 // Tail lists the last n torrents (default: 5)
@@ -223,7 +217,7 @@ func (h *Handler) Tail(ud tgbotapi.Update, tokens []string, cmd string) {
 	buf := new(bytes.Buffer)
 	for _, torrent := range torrents[len(torrents)-n:] {
 		torrentName := h.Replacer.Replace(torrent.Name) // escape markdown
-		buf.WriteString(h.FormatListLine(cmd, "`<%d>` *%s*\n%s *%s* of *%s* (*%.1f%%*) ↓ *%s*  ↑ *%s* R: *%s*\n\n",
+		buf.WriteString(h.FormatOutputString(cmd,
 			torrent.ID, torrentName, torrent.TorrentStatus(), humanize.Bytes(torrent.Have()),
 			humanize.Bytes(torrent.SizeWhenDone), torrent.PercentDone*100, humanize.Bytes(torrent.RateDownload),
 			humanize.Bytes(torrent.RateUpload), torrent.Ratio()))
@@ -236,40 +230,40 @@ func (h *Handler) Tail(ud tgbotapi.Update, tokens []string, cmd string) {
 
 	msgID := h.SendWithFormat(ud.Message.Chat.ID, buf.String(), cmd)
 
-	if h.NoLive {
+	if h.NoLive || h.UpdateMaxIterations == 0 {
 		return
 	}
 
-	// keep the info live
-	for i := 0; i < h.Duration; i++ {
-		time.Sleep(time.Second * h.Interval)
-		buf.Reset()
-
-		torrents, err = h.Client.GetTorrents()
-		if err != nil {
-			continue // try again if some error happened
-		}
-
-		if len(torrents) < 1 {
-			break
-		}
-
-		// make sure that we stay in the boundaries
-		if n <= 0 || n > len(torrents) {
-			n = len(torrents)
-		}
-
-		for _, torrent := range torrents[len(torrents)-n:] {
-			torrentName := h.Replacer.Replace(torrent.Name) // escape markdown
-			buf.WriteString(h.FormatListLine(cmd, "`<%d>` *%s*\n%s *%s* of *%s* (*%.1f%%*) ↓ *%s*  ↑ *%s* R: *%s*\n\n",
-				torrent.ID, torrentName, torrent.TorrentStatus(), humanize.Bytes(torrent.Have()),
-				humanize.Bytes(torrent.SizeWhenDone), torrent.PercentDone*100, humanize.Bytes(torrent.RateDownload),
-				humanize.Bytes(torrent.RateUpload), torrent.Ratio()))
-		}
-
-		// no need to check if it is empty, as if the buffer is empty telegram won't change the message
-		editConf := tgbotapi.NewEditMessageText(ud.Message.Chat.ID, msgID, buf.String())
-		editConf.ParseMode = tgbotapi.ModeMarkdown
-		h.Bot.Send(editConf)
+	iterations := h.Duration
+	if h.UpdateMaxIterations > 0 && h.UpdateMaxIterations < iterations {
+		iterations = h.UpdateMaxIterations
 	}
+	chatID := ud.Message.Chat.ID
+
+	go func() {
+		liveBuf := new(bytes.Buffer)
+		for i := 0; i < iterations; i++ {
+			time.Sleep(time.Second * h.Interval)
+			liveBuf.Reset()
+
+			torrents, err := h.Client.GetTorrents()
+			if err != nil || len(torrents) < 1 {
+				continue
+			}
+			nn := n
+			if nn <= 0 || nn > len(torrents) {
+				nn = len(torrents)
+			}
+			for _, torrent := range torrents[len(torrents)-nn:] {
+				torrentName := h.Replacer.Replace(torrent.Name)
+				liveBuf.WriteString(h.FormatOutputString(cmd,
+					torrent.ID, torrentName, torrent.TorrentStatus(), humanize.Bytes(torrent.Have()),
+					humanize.Bytes(torrent.SizeWhenDone), torrent.PercentDone*100, humanize.Bytes(torrent.RateDownload),
+					humanize.Bytes(torrent.RateUpload), torrent.Ratio()))
+			}
+			editConf := tgbotapi.NewEditMessageText(chatID, msgID, liveBuf.String())
+			editConf.ParseMode = tgbotapi.ModeMarkdown
+			h.Bot.Send(editConf)
+		}
+	}()
 }

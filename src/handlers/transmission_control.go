@@ -50,7 +50,7 @@ func (h *Handler) Stop(ud tgbotapi.Update, tokens []string, cmd string) {
 			h.SendWithFormat(ud.Message.Chat.ID, "*stop:* "+err.Error(), cmd)
 			continue
 		}
-		msg := h.FormatOutputString(cmd, "[%s] *stop:* %s", status, torrent.Name)
+		msg := h.FormatOutputString(cmd, status, torrent.Name)
 		h.SendWithFormat(ud.Message.Chat.ID, msg, cmd)
 	}
 }
@@ -96,7 +96,7 @@ func (h *Handler) Start(ud tgbotapi.Update, tokens []string, cmd string) {
 			h.SendWithFormat(ud.Message.Chat.ID, "*start:* "+err.Error(), cmd)
 			continue
 		}
-		msg := h.FormatOutputString(cmd, "[%s] *start:* %s", status, torrent.Name)
+		msg := h.FormatOutputString(cmd, status, torrent.Name)
 		h.SendWithFormat(ud.Message.Chat.ID, msg, cmd)
 	}
 }
@@ -142,7 +142,7 @@ func (h *Handler) Check(ud tgbotapi.Update, tokens []string, cmd string) {
 			h.SendWithFormat(ud.Message.Chat.ID, "*check:* "+err.Error(), cmd)
 			continue
 		}
-		msg := h.FormatOutputString(cmd, "[%s] *check:* %s", status, torrent.Name)
+		msg := h.FormatOutputString(cmd, status, torrent.Name)
 		h.SendWithFormat(ud.Message.Chat.ID, msg, cmd)
 	}
 }
@@ -169,7 +169,7 @@ func (h *Handler) Delete(ud tgbotapi.Update, tokens []string, cmd string) {
 			continue
 		}
 
-		msg := h.FormatOutputString(cmd, "*Deleted:* %s", name)
+		msg := h.FormatOutputString(cmd, name)
 		h.SendWithFormat(ud.Message.Chat.ID, msg, cmd)
 	}
 }
@@ -195,7 +195,7 @@ func (h *Handler) DeleteData(ud tgbotapi.Update, tokens []string, cmd string) {
 			continue
 		}
 
-		msg := h.FormatOutputString(cmd, "*Deleted:* %s", name)
+		msg := h.FormatOutputString(cmd, name)
 		h.SendWithFormat(ud.Message.Chat.ID, msg, cmd)
 	}
 }
@@ -208,24 +208,7 @@ func (h *Handler) Stats(ud tgbotapi.Update, cmd string) {
 		return
 	}
 
-	// Use output_string from JSON if available, otherwise use default template
-	defaultTemplate := `
-Total: *%d*
-Active: *%d*
-Paused: *%d*
-
-_Current Stats_
-Downloaded: *%s*
-Uploaded: *%s*
-Running time: *%s*
-
-_Accumulative Stats_
-Sessions: *%d*
-Downloaded: *%s*
-Uploaded: *%s*
-Total Running time: *%s*
-`
-	msg := h.FormatOutputString(cmd, defaultTemplate,
+	msg := h.FormatOutputString(cmd,
 		stats.TorrentCount,
 		stats.ActiveTorrentCount,
 		stats.PausedTorrentCount,
@@ -249,34 +232,36 @@ func (h *Handler) Speed(ud tgbotapi.Update, cmd string) {
 		return
 	}
 
-	// Use output_string from JSON if available, otherwise use default template
-	msg := h.FormatOutputString(cmd, "↓ %s  ↑ %s", humanize.Bytes(stats.DownloadSpeed), humanize.Bytes(stats.UploadSpeed))
+	msg := h.FormatOutputString(cmd, humanize.Bytes(stats.DownloadSpeed), humanize.Bytes(stats.UploadSpeed))
 
 	msgID := h.SendWithFormat(ud.Message.Chat.ID, msg, cmd)
 
-	if h.NoLive {
+	if h.NoLive || h.UpdateMaxIterations == 0 {
 		return
 	}
 
-	for i := 0; i < h.Duration; i++ {
-		time.Sleep(time.Second * h.Interval)
-		stats, err = h.Client.GetStats()
-		if err != nil {
-			break
-		}
-
-		msg = h.FormatOutputString(cmd, "↓ %s  ↑ %s", humanize.Bytes(stats.DownloadSpeed), humanize.Bytes(stats.UploadSpeed))
-
-		editConf := tgbotapi.NewEditMessageText(ud.Message.Chat.ID, msgID, msg)
-		h.Bot.Send(editConf)
-		time.Sleep(time.Second * h.Interval)
+	iterations := h.Duration
+	if h.UpdateMaxIterations > 0 && h.UpdateMaxIterations < iterations {
+		iterations = h.UpdateMaxIterations
 	}
-	// sleep one more time before switching to dashes
-	time.Sleep(time.Second * h.Interval)
+	chatID := ud.Message.Chat.ID
 
-	// show dashes to indicate that we are done updating.
-	editConf := tgbotapi.NewEditMessageText(ud.Message.Chat.ID, msgID, "↓ - B  ↑ - B")
-	h.Bot.Send(editConf)
+	go func() {
+		for i := 0; i < iterations; i++ {
+			time.Sleep(time.Second * h.Interval)
+			stats, err := h.Client.GetStats()
+			if err != nil {
+				break
+			}
+			msg := h.FormatOutputString(cmd, humanize.Bytes(stats.DownloadSpeed), humanize.Bytes(stats.UploadSpeed))
+			editConf := tgbotapi.NewEditMessageText(chatID, msgID, msg)
+			h.Bot.Send(editConf)
+			time.Sleep(time.Second * h.Interval)
+		}
+		time.Sleep(time.Second * h.Interval)
+		editConf := tgbotapi.NewEditMessageText(chatID, msgID, "↓ - B  ↑ - B")
+		h.Bot.Send(editConf)
+	}()
 }
 
 // Count shows the number of torrents per status
@@ -308,9 +293,7 @@ func (h *Handler) Count(ud tgbotapi.Update, cmd string) {
 		}
 	}
 
-	// Use output_string from JSON if available, otherwise use default template
-	defaultTemplate := "Downloading: %d\nSeeding: %d\nPaused: %d\nVerifying: %d\n\n- Waiting to -\nDownload: %d\nSeed: %d\nVerify: %d\n\nTotal: %d"
-	msg := h.FormatOutputString(cmd, defaultTemplate,
+	msg := h.FormatOutputString(cmd,
 		downloading, seeding, stopped, checking, downloadingQ, seedingQ, checkingQ, len(torrents))
 
 	h.SendWithFormat(ud.Message.Chat.ID, msg, cmd)
@@ -348,6 +331,6 @@ func (h *Handler) SpeedLimit(ud tgbotapi.Update, tokens []string, limitType stri
 // Version shows the version information (uses output_format and output_string for "version" from commands.json)
 func (h *Handler) Version(ud tgbotapi.Update, version string) {
 	// Use output_string from JSON if available, otherwise use default template
-	msg := h.FormatOutputString("version", "Transmission *%s*\nTransmission-telegram *%s*", h.Client.Version(), version)
+	msg := h.FormatOutputString("version", h.Client.Version(), version)
 	h.SendWithFormat(ud.Message.Chat.ID, msg, "version")
 }

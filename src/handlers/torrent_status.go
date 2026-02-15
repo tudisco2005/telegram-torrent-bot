@@ -25,7 +25,7 @@ func (h *Handler) Downs(ud tgbotapi.Update, cmd string) {
 		// Downloading or in queue to download
 		if torrents[i].Status == transmission.StatusDownloading ||
 			torrents[i].Status == transmission.StatusDownloadPending {
-			buf.WriteString(h.FormatListLine(cmd, "<%d> %s\n", torrents[i].ID, torrents[i].Name))
+			buf.WriteString(h.FormatOutputString(cmd, torrents[i].ID, torrents[i].Name))
 		}
 	}
 
@@ -48,7 +48,7 @@ func (h *Handler) Seeding(ud tgbotapi.Update, cmd string) {
 	for i := range torrents {
 		if torrents[i].Status == transmission.StatusSeeding ||
 			torrents[i].Status == transmission.StatusSeedPending {
-			buf.WriteString(h.FormatListLine(cmd, "<%d> %s\n", torrents[i].ID, torrents[i].Name))
+			buf.WriteString(h.FormatOutputString(cmd, torrents[i].ID, torrents[i].Name))
 		}
 	}
 
@@ -71,7 +71,7 @@ func (h *Handler) Paused(ud tgbotapi.Update, cmd string) {
 	buf := new(bytes.Buffer)
 	for i := range torrents {
 		if torrents[i].Status == transmission.StatusStopped {
-			buf.WriteString(h.FormatListLine(cmd, "<%d> %s\n", torrents[i].ID, torrents[i].Name))
+			buf.WriteString(h.FormatOutputString(cmd, torrents[i].ID, torrents[i].Name))
 		}
 	}
 
@@ -95,7 +95,7 @@ func (h *Handler) Checking(ud tgbotapi.Update, cmd string) {
 	for i := range torrents {
 		if torrents[i].Status == transmission.StatusChecking ||
 			torrents[i].Status == transmission.StatusCheckPending {
-			buf.WriteString(h.FormatListLine(cmd, "<%d> %s\n", torrents[i].ID, torrents[i].Name))
+			buf.WriteString(h.FormatOutputString(cmd, torrents[i].ID, torrents[i].Name))
 		}
 	}
 
@@ -121,7 +121,7 @@ func (h *Handler) Active(ud tgbotapi.Update, cmd string) {
 			torrents[i].RateUpload > 0 {
 			// escape markdown
 			torrentName := h.Replacer.Replace(torrents[i].Name)
-			buf.WriteString(h.FormatListLine(cmd, "`<%d>` *%s*\n%s ↓ *%s*  ↑ *%s* R: *%s*\n\n",
+			buf.WriteString(h.FormatOutputString(cmd,
 				torrents[i].ID, torrentName, torrents[i].TorrentStatus(),
 				humanize.Bytes(torrents[i].RateDownload), humanize.Bytes(torrents[i].RateUpload),
 				torrents[i].Ratio()))
@@ -134,57 +134,58 @@ func (h *Handler) Active(ud tgbotapi.Update, cmd string) {
 
 	msgID := h.SendWithFormat(ud.Message.Chat.ID, buf.String(), cmd)
 
-	if h.NoLive {
+	if h.NoLive || h.UpdateMaxIterations == 0 {
 		return
 	}
 
-	// keep the active list live for 'duration * interval'
-	for i := 0; i < h.Duration; i++ {
-		time.Sleep(time.Second * h.Interval)
-		// reset the buffer to reuse it
-		buf.Reset()
+	iterations := h.Duration
+	if h.UpdateMaxIterations > 0 && h.UpdateMaxIterations < iterations {
+		iterations = h.UpdateMaxIterations
+	}
+	chatID := ud.Message.Chat.ID
 
-		// update torrents
-		torrents, err = h.Client.GetTorrents()
-		if err != nil {
-			continue // if there was error getting torrents, skip to the next iteration
+	go func() {
+		var torrents transmission.Torrents
+		liveBuf := new(bytes.Buffer)
+		for i := 0; i < iterations; i++ {
+			time.Sleep(time.Second * h.Interval)
+			liveBuf.Reset()
+
+			var err error
+			torrents, err = h.Client.GetTorrents()
+			if err != nil {
+				continue
+			}
+
+			for j := range torrents {
+				if torrents[j].RateDownload > 0 || torrents[j].RateUpload > 0 {
+					torrentName := h.Replacer.Replace(torrents[j].Name)
+					liveBuf.WriteString(h.FormatOutputString(cmd,
+						torrents[j].ID, torrentName, torrents[j].TorrentStatus(),
+						humanize.Bytes(torrents[j].RateDownload), humanize.Bytes(torrents[j].RateUpload),
+						torrents[j].Ratio()))
+				}
+			}
+
+			editConf := tgbotapi.NewEditMessageText(chatID, msgID, liveBuf.String())
+			editConf.ParseMode = tgbotapi.ModeMarkdown
+			h.Bot.Send(editConf)
 		}
+		time.Sleep(time.Second * h.Interval)
 
-		// do the same loop again
+		liveBuf.Reset()
+		torrents, _ = h.Client.GetTorrents()
 		for i := range torrents {
-			if torrents[i].RateDownload > 0 ||
-				torrents[i].RateUpload > 0 {
+			if torrents[i].RateDownload > 0 || torrents[i].RateUpload > 0 {
 				torrentName := h.Replacer.Replace(torrents[i].Name)
-				buf.WriteString(h.FormatListLine(cmd, "`<%d>` *%s*\n%s ↓ *%s*  ↑ *%s* R: *%s*\n\n",
-					torrents[i].ID, torrentName, torrents[i].TorrentStatus(),
-					humanize.Bytes(torrents[i].RateDownload), humanize.Bytes(torrents[i].RateUpload),
-					torrents[i].Ratio()))
+				liveBuf.WriteString(fmt.Sprintf("`<%d>` *%s*\n%s ↓ *-*  ↑ *-* R: *-*\n\n",
+					torrents[i].ID, torrentName, torrents[i].TorrentStatus()))
 			}
 		}
-
-		// no need to check if it is empty, as if the buffer is empty telegram won't change the message
-		editConf := tgbotapi.NewEditMessageText(ud.Message.Chat.ID, msgID, buf.String())
+		editConf := tgbotapi.NewEditMessageText(chatID, msgID, liveBuf.String())
 		editConf.ParseMode = tgbotapi.ModeMarkdown
 		h.Bot.Send(editConf)
-	}
-	// sleep one more time before putting the dashes
-	time.Sleep(time.Second * h.Interval)
-
-	// replace the speed with dashes to indicate that we are done being live
-	buf.Reset()
-	for i := range torrents {
-		if torrents[i].RateDownload > 0 ||
-			torrents[i].RateUpload > 0 {
-			// escape markdown (dashes line has different placeholder count than output_string, use fmt.Sprintf)
-			torrentName := h.Replacer.Replace(torrents[i].Name)
-			buf.WriteString(fmt.Sprintf("`<%d>` *%s*\n%s ↓ *-*  ↑ *-* R: *-*\n\n",
-				torrents[i].ID, torrentName, torrents[i].TorrentStatus()))
-		}
-	}
-
-	editConf := tgbotapi.NewEditMessageText(ud.Message.Chat.ID, msgID, buf.String())
-	editConf.ParseMode = tgbotapi.ModeMarkdown
-	h.Bot.Send(editConf)
+	}()
 }
 
 // Errors lists torrents with errors
@@ -198,7 +199,7 @@ func (h *Handler) Errors(ud tgbotapi.Update, cmd string) {
 	buf := new(bytes.Buffer)
 	for i := range torrents {
 		if torrents[i].Error != 0 {
-			buf.WriteString(h.FormatListLine(cmd, "<%d> %s\n%s\n\n", torrents[i].ID, torrents[i].Name, torrents[i].ErrorString))
+			buf.WriteString(h.FormatOutputString(cmd, torrents[i].ID, torrents[i].Name, torrents[i].ErrorString))
 		}
 	}
 	if buf.Len() == 0 {
@@ -280,7 +281,7 @@ func (h *Handler) Trackers(ud tgbotapi.Update, cmd string) {
 
 	buf := new(bytes.Buffer)
 	for k, v := range trackers {
-		buf.WriteString(h.FormatListLine(cmd, "%d - %s\n", v, k))
+		buf.WriteString(h.FormatOutputString(cmd, v, k))
 	}
 
 	if buf.Len() == 0 {

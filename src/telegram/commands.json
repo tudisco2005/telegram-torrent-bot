@@ -111,7 +111,8 @@
       "description": "Manipulate sorting",
       "example": "/sort [option]",
       "output_format": "plain",
-      "list_output": false
+      "list_output": false,
+      "output_string": "*sort:* %s"
     },
     {
       "name": "trackers",
@@ -133,7 +134,8 @@
       "description": "Set download directory",
       "example": "/downloaddir /path/to/directory",
       "output_format": "plain",
-      "list_output": false
+      "list_output": false,
+      "output_string": "*downloaddir:* downloaddir has been successfully changed to %s"
     },
     {
       "name": "add",
@@ -180,7 +182,8 @@
       "description": "Get info about torrents",
       "example": "/info <id1> <id2>",
       "output_format": "markdown",
-      "list_output": false
+      "list_output": false,
+      "output_string": "`<%d>` *%s*\\n%s *%s* of *%s* (*%.1f%%*) ↓ *%s*  ↑ *%s* R: *%s*\\nDL: *%s* UP: *%s*\\nAdded: *%s*, ETA: *%s*\\nTrackers: `%s`"
     },
     {
       "name": "stop",
@@ -260,7 +263,8 @@
       "description": "Set download speed limit",
       "example": "/downlimit 1024",
       "output_format": "plain",
-      "list_output": false
+      "list_output": false,
+      "output_string": "*downlimit:* limit has been successfully changed to %d KB/s"
     },
     {
       "name": "uplimit",
@@ -271,7 +275,8 @@
       "description": "Set upload speed limit",
       "example": "/uplimit 512",
       "output_format": "plain",
-      "list_output": false
+      "list_output": false,
+      "output_string": "*uplimit:* limit has been successfully changed to %d KB/s"
     },
     {
       "name": "speed",
@@ -299,11 +304,13 @@
       "name": "help",
       "command_category": "general",
       "aliases": [
-        "h"
+        "h",
+        "?"
       ],
       "description": "Show help message",
       "output_format": "markdown",
-      "list_output": false
+      "list_output": false,
+      "output_string": "%s"
     },
     {
       "name": "version",

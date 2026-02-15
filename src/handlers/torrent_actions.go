@@ -3,12 +3,17 @@ package handlers
 import (
 	"bytes"
 	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/dustin/go-humanize"
+	"github.com/pyed/transmission"
 	tgbotapi "gopkg.in/telegram-bot-api.v4"
 )
 
@@ -26,41 +31,111 @@ func (h *Handler) DownloadDir(ud tgbotapi.Update, tokens []string, cmd string) {
 	h.SendWithFormat(ud.Message.Chat.ID, "*downloaddir:* downloaddir has been successfully changed to "+downloadDir, cmd)
 }
 
-// Add adds torrents from URLs or magnets
+// Add adds torrents from URLs or magnets via Transmission
 func (h *Handler) Add(ud tgbotapi.Update, tokens []string, cmd string) {
 	if len(tokens) == 0 {
-		h.SendWithFormat(ud.Message.Chat.ID, "*add:* needs at least one URL", cmd)
+		h.SendWithFormat(ud.Message.Chat.ID, "*add:* needs at least one URL or magnet", cmd)
 		return
 	}
 
-	// loop over the URL/s and add them
 	for _, url := range tokens {
-		// Note: Actual implementation depends on transmission client API
-		// Placeholder implementation
-		msg := h.FormatOutputString(cmd, "*Added:* %s", url)
+		addCmd := transmission.NewAddCmdByURL(url)
+		added, err := h.Client.ExecuteAddCommand(addCmd)
+		if err != nil {
+			h.SendWithFormat(ud.Message.Chat.ID, "*add:* "+err.Error()+" — "+url, cmd)
+			continue
+		}
+		msg := h.FormatOutputString(cmd, added.Name)
 		h.SendWithFormat(ud.Message.Chat.ID, msg, cmd)
 	}
 }
 
-// ReceiveTorrent handles torrent file uploads
+// ReceiveTorrent handles torrent file uploads: saves to DEFAULT_TORRENT_LOCATION then adds to Transmission
 func (h *Handler) ReceiveTorrent(ud tgbotapi.Update) {
 	if ud.Message.Document == nil {
-		return // has no document
+		return
+	}
+	h.Logger.Printf("[DEBUG] ReceiveTorrent: document received FileID=%s FileName=%q Size=%d",
+		ud.Message.Document.FileID, ud.Message.Document.FileName, ud.Message.Document.FileSize)
+
+	if h.DefaultTorrentLocation == "" {
+		h.SendWithFormat(ud.Message.Chat.ID, "*receiver:* DEFAULT_TORRENT_LOCATION is not set", "add")
+		return
 	}
 
-	// get the file ID and make the config
-	fconfig := tgbotapi.FileConfig{
-		FileID: ud.Message.Document.FileID,
-	}
+	fconfig := tgbotapi.FileConfig{FileID: ud.Message.Document.FileID}
 	file, err := h.Bot.GetFile(fconfig)
 	if err != nil {
 		h.SendWithFormat(ud.Message.Chat.ID, "*receiver:* "+err.Error(), "add")
 		return
 	}
+	h.Logger.Printf("[DEBUG] ReceiveTorrent: GetFile ok FilePath=%s", file.FilePath)
 
-	// add by file URL - Note: BotToken needs to be passed from main
-	// For now, we'll use empty string and this should be handled better
-	h.Add(ud, []string{file.Link("")}, "add")
+	// Download file from Telegram
+	downloadURL := file.Link(h.BotToken)
+	h.Logger.Printf("[DEBUG] ReceiveTorrent: downloading from Telegram (FilePath=%s)", file.FilePath)
+	resp, err := http.Get(downloadURL)
+	if err != nil {
+		h.SendWithFormat(ud.Message.Chat.ID, "*receiver:* download failed: "+err.Error(), "add")
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		h.SendWithFormat(ud.Message.Chat.ID, "*receiver:* download failed: status "+resp.Status, "add")
+		return
+	}
+	h.Logger.Printf("[DEBUG] ReceiveTorrent: download ok status=%d content_length=%d", resp.StatusCode, resp.ContentLength)
+
+	// Ensure save directory exists
+	h.Logger.Printf("[DEBUG] ReceiveTorrent: ensuring directory exists: %s", h.DefaultTorrentLocation)
+	if err := os.MkdirAll(h.DefaultTorrentLocation, 0755); err != nil {
+		h.SendWithFormat(ud.Message.Chat.ID, "*receiver:* "+err.Error(), "add")
+		return
+	}
+
+	// Save to DEFAULT_TORRENT_LOCATION (use document filename or fallback)
+	name := ud.Message.Document.FileName
+	if name == "" {
+		name = filepath.Base(file.FilePath)
+	}
+	if name == "" || name == "." {
+		name = "torrent_" + ud.Message.Document.FileID + ".torrent"
+	}
+	if !strings.HasSuffix(strings.ToLower(name), ".torrent") {
+		name = name + ".torrent"
+	}
+	savePath := filepath.Join(h.DefaultTorrentLocation, name)
+	h.Logger.Printf("[DEBUG] ReceiveTorrent: saving .torrent as %s", savePath)
+
+	out, err := os.Create(savePath)
+	if err != nil {
+		h.SendWithFormat(ud.Message.Chat.ID, "*receiver:* "+err.Error(), "add")
+		return
+	}
+	n, err := io.Copy(out, resp.Body)
+	out.Close()
+	if err != nil {
+		os.Remove(savePath)
+		h.SendWithFormat(ud.Message.Chat.ID, "*receiver:* "+err.Error(), "add")
+		return
+	}
+	h.Logger.Printf("[DEBUG] ReceiveTorrent: saved %d bytes to %s", n, savePath)
+
+	// Add to Transmission from the saved file
+	h.Logger.Printf("[DEBUG] ReceiveTorrent: adding to Transmission from file %s", savePath)
+	addCmd, err := transmission.NewAddCmdByFile(savePath)
+	if err != nil {
+		h.SendWithFormat(ud.Message.Chat.ID, "*receiver:* "+err.Error(), "add")
+		return
+	}
+	added, err := h.Client.ExecuteAddCommand(addCmd)
+	if err != nil {
+		h.SendWithFormat(ud.Message.Chat.ID, "*receiver:* "+err.Error(), "add")
+		return
+	}
+	h.Logger.Printf("[DEBUG] ReceiveTorrent: added to Transmission id=%d name=%q", added.ID, added.Name)
+	msg := h.FormatOutputString("add", added.Name)
+	h.SendWithFormat(ud.Message.Chat.ID, msg, "add")
 }
 
 // Search searches for torrents by name
@@ -88,7 +163,7 @@ func (h *Handler) Search(ud tgbotapi.Update, tokens []string, cmd string) {
 	buf := new(bytes.Buffer)
 	for i := range torrents {
 		if regx.MatchString(torrents[i].Name) {
-			buf.WriteString(h.FormatListLine(cmd, "<%d> %s\n", torrents[i].ID, torrents[i].Name))
+			buf.WriteString(h.FormatOutputString(cmd, torrents[i].ID, torrents[i].Name))
 		}
 	}
 	if buf.Len() == 0 {
@@ -129,7 +204,7 @@ func (h *Handler) Latest(ud tgbotapi.Update, tokens []string, cmd string) {
 
 	buf := new(bytes.Buffer)
 	for i := range torrents[:n] {
-		buf.WriteString(h.FormatListLine(cmd, "<%d> %s\n", torrents[i].ID, torrents[i].Name))
+		buf.WriteString(h.FormatOutputString(cmd, torrents[i].ID, torrents[i].Name))
 	}
 	if buf.Len() == 0 {
 		h.SendWithFormat(ud.Message.Chat.ID, "*latest:* No torrents", cmd)
@@ -178,13 +253,18 @@ func (h *Handler) Info(ud tgbotapi.Update, tokens []string, cmd string) {
 		// send it
 		msgID := h.SendWithFormat(ud.Message.Chat.ID, info, cmd)
 
-		if h.NoLive {
+		if h.NoLive || h.UpdateMaxIterations == 0 {
 			continue
 		}
 
-		// this go-routine will make the info live for 'duration * interval'
-		go func(torrentID, msgID int) {
-			for i := 0; i < h.Duration; i++ {
+		iterations := h.Duration
+		if h.UpdateMaxIterations > 0 && h.UpdateMaxIterations < iterations {
+			iterations = h.UpdateMaxIterations
+		}
+		chatID := ud.Message.Chat.ID
+		// this go-routine will make the info live for 'iterations * interval'
+		go func(torrentID, msgID int, chatID int64) {
+			for i := 0; i < iterations; i++ {
 				time.Sleep(time.Second * h.Interval)
 
 				torrent, err := h.Client.GetTorrent(torrentID)
@@ -199,7 +279,7 @@ func (h *Handler) Info(ud tgbotapi.Update, tokens []string, cmd string) {
 					humanize.Bytes(torrent.DownloadedEver), humanize.Bytes(torrent.UploadedEver), time.Unix(torrent.AddedDate, 0).Format(time.Stamp),
 					torrent.ETA(), trackers)
 
-				editConf := tgbotapi.NewEditMessageText(ud.Message.Chat.ID, msgID, info)
+				editConf := tgbotapi.NewEditMessageText(chatID, msgID, info)
 				editConf.ParseMode = tgbotapi.ModeMarkdown
 				h.Bot.Send(editConf)
 			}
@@ -216,9 +296,9 @@ func (h *Handler) Info(ud tgbotapi.Update, tokens []string, cmd string) {
 				torrent.ID, torrentName, torrent.TorrentStatus(), humanize.Bytes(torrent.Have()), humanize.Bytes(torrent.SizeWhenDone),
 				time.Unix(torrent.AddedDate, 0).Format(time.Stamp), trackers)
 
-			editConf := tgbotapi.NewEditMessageText(ud.Message.Chat.ID, msgID, info)
+			editConf := tgbotapi.NewEditMessageText(chatID, msgID, info)
 			editConf.ParseMode = tgbotapi.ModeMarkdown
 			h.Bot.Send(editConf)
-		}(torrentID, msgID)
+		}(torrentID, msgID, chatID)
 	}
 }

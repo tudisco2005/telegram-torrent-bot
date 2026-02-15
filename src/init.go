@@ -34,17 +34,18 @@ func InitFlags(cfg *AppConfig) error {
 
 	// Load environment configuration from .env file and environment variables
 	envCfg := &config.EnvConfig{
-		BotToken:               &cfg.BotToken,
-		Masters:                &cfg.Masters,
-		RPCURL:                 &cfg.RPCURL,
-		Username:               &cfg.Username,
-		Password:               &cfg.Password,
-		LogFile:                &cfg.LogFile,
-		TransLogFile:           &cfg.TransLogFile,
-		DefaultTorrentLocation: &cfg.DefaultTorrentLocation,
-		NoLive:                 &cfg.NoLive,
-		Verbose:                &cfg.Verbose,
-		UpdateMaxIterations:    &cfg.UpdateMaxIterations,
+		BotToken:                &cfg.BotToken,
+		Masters:                 &cfg.Masters,
+		RPCURL:                  &cfg.RPCURL,
+		Username:                &cfg.Username,
+		Password:                &cfg.Password,
+		LogFile:                 &cfg.LogFile,
+		TransLogFile:            &cfg.TransLogFile,
+		DefaultTorrentLocation:  &cfg.DefaultTorrentLocation,
+		DefaultDownloadLocation: &cfg.DefaultDownloadLocation,
+		NoLive:                  &cfg.NoLive,
+		Verbose:                 &cfg.Verbose,
+		UpdateMaxIterations:     &cfg.UpdateMaxIterations,
 	}
 	config.LoadEnvironmentConfig(envCfg)
 

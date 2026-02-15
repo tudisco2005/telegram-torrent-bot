@@ -148,7 +148,7 @@ func (h *Handler) Active(ud tgbotapi.Update, cmd string) {
 		var torrents transmission.Torrents
 		liveBuf := new(bytes.Buffer)
 		for i := 0; i < iterations; i++ {
-			time.Sleep(time.Second * h.Interval)
+			time.Sleep(h.Interval)
 			liveBuf.Reset()
 
 			var err error
@@ -169,9 +169,13 @@ func (h *Handler) Active(ud tgbotapi.Update, cmd string) {
 
 			editConf := tgbotapi.NewEditMessageText(chatID, msgID, liveBuf.String())
 			editConf.ParseMode = tgbotapi.ModeMarkdown
-			h.Bot.Send(editConf)
+			if resp, err := h.Bot.Send(editConf); err != nil {
+				h.Logger.Printf("[DEBUG] EditMessage failed: ChatID=%d MsgID=%d Len=%d Err=%v", chatID, msgID, len(liveBuf.String()), err)
+			} else {
+				h.Logger.Printf("[DEBUG] EditMessage sent: ChatID=%d MsgID=%d RespMessageID=%d", chatID, msgID, resp.MessageID)
+			}
 		}
-		time.Sleep(time.Second * h.Interval)
+		time.Sleep(h.Interval)
 
 		liveBuf.Reset()
 		torrents, _ = h.Client.GetTorrents()
@@ -184,7 +188,11 @@ func (h *Handler) Active(ud tgbotapi.Update, cmd string) {
 		}
 		editConf := tgbotapi.NewEditMessageText(chatID, msgID, liveBuf.String())
 		editConf.ParseMode = tgbotapi.ModeMarkdown
-		h.Bot.Send(editConf)
+		if resp, err := h.Bot.Send(editConf); err != nil {
+			h.Logger.Printf("[DEBUG] EditMessage failed: ChatID=%d MsgID=%d Len=%d Err=%v", chatID, msgID, len(liveBuf.String()), err)
+		} else {
+			h.Logger.Printf("[DEBUG] EditMessage sent: ChatID=%d MsgID=%d RespMessageID=%d", chatID, msgID, resp.MessageID)
+		}
 	}()
 }
 

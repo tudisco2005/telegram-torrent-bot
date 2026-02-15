@@ -26,9 +26,11 @@ func (h *Handler) DownloadDir(ud tgbotapi.Update, tokens []string, cmd string) {
 
 	downloadDir := tokens[0]
 
-	// Note: Actual implementation depends on transmission client API
-	// This is a placeholder
-	h.SendWithFormat(ud.Message.Chat.ID, "*downloaddir:* downloaddir has been successfully changed to "+downloadDir, cmd)
+	// Update in-memory download directory (session-wide). Persisting or applying
+	// to Transmission per-torrent options is not implemented here.
+	h.DefaultDownloadLocation = downloadDir
+	msg := h.FormatOutputString(cmd, downloadDir)
+	h.SendWithFormat(ud.Message.Chat.ID, msg, cmd)
 }
 
 // Add adds torrents from URLs or magnets via Transmission
@@ -265,7 +267,7 @@ func (h *Handler) Info(ud tgbotapi.Update, tokens []string, cmd string) {
 		// this go-routine will make the info live for 'iterations * interval'
 		go func(torrentID, msgID int, chatID int64) {
 			for i := 0; i < iterations; i++ {
-				time.Sleep(time.Second * h.Interval)
+				time.Sleep(h.Interval)
 
 				torrent, err := h.Client.GetTorrent(torrentID)
 				if err != nil {
@@ -281,10 +283,14 @@ func (h *Handler) Info(ud tgbotapi.Update, tokens []string, cmd string) {
 
 				editConf := tgbotapi.NewEditMessageText(chatID, msgID, info)
 				editConf.ParseMode = tgbotapi.ModeMarkdown
-				h.Bot.Send(editConf)
+				if resp, err := h.Bot.Send(editConf); err != nil {
+					h.Logger.Printf("[DEBUG] EditMessage failed: ChatID=%d MsgID=%d Len=%d Err=%v", chatID, msgID, len(info), err)
+				} else {
+					h.Logger.Printf("[DEBUG] EditMessage sent: ChatID=%d MsgID=%d RespMessageID=%d", chatID, msgID, resp.MessageID)
+				}
 			}
 			// sleep one more time before the dashes
-			time.Sleep(time.Second * h.Interval)
+			time.Sleep(h.Interval)
 
 			// at the end write dashes to indicate that we are done being live.
 			torrent, err := h.Client.GetTorrent(torrentID)
@@ -298,7 +304,11 @@ func (h *Handler) Info(ud tgbotapi.Update, tokens []string, cmd string) {
 
 			editConf := tgbotapi.NewEditMessageText(chatID, msgID, info)
 			editConf.ParseMode = tgbotapi.ModeMarkdown
-			h.Bot.Send(editConf)
+			if resp, err := h.Bot.Send(editConf); err != nil {
+				h.Logger.Printf("[DEBUG] EditMessage failed: ChatID=%d MsgID=%d Len=%d Err=%v", chatID, msgID, len(info), err)
+			} else {
+				h.Logger.Printf("[DEBUG] EditMessage sent: ChatID=%d MsgID=%d RespMessageID=%d", chatID, msgID, resp.MessageID)
+			}
 		}(torrentID, msgID, chatID)
 	}
 }

@@ -91,6 +91,7 @@ type BotConfig struct {
 	ChatID                 int64
 	TransLogFile           string
 	DefaultTorrentLocation string // directory where received .torrent files are saved before adding to Transmission
+	DefaultDownloadLocation string // directory where downloaded files are stored
 	VERSION                string
 	Verbose                bool
 }
@@ -169,6 +170,7 @@ func Start(cfg *BotConfig) {
 		Client:                cfg.Client,
 		BotToken:              cfg.Bot.Token,
 		DefaultTorrentLocation: cfg.DefaultTorrentLocation,
+		DefaultDownloadLocation: cfg.DefaultDownloadLocation,
 		NoLive:                cfg.NoLive,
 		Interval:              cfg.Interval * time.Second,
 		Duration:              cfg.Duration,

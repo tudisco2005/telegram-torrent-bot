@@ -26,6 +26,7 @@ type AppConfig struct {
 	LogFile                 string
 	TransLogFile            string // Transmission log file
 	DefaultTorrentLocation  string // directory where received .torrent files are saved before adding to Transmission
+	DefaultDownloadLocation string // directory where downloaded files are stored
 	NoLive                  bool
 
 	// transmission
@@ -95,6 +96,7 @@ func main() {
 		ChatID:                 cfg.ChatID,
 		TransLogFile:           cfg.TransLogFile,
 		DefaultTorrentLocation: cfg.DefaultTorrentLocation,
+		DefaultDownloadLocation: cfg.DefaultDownloadLocation,
 		VERSION:                VERSION,
 		Verbose:                cfg.Verbose,
 	}

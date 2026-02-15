@@ -14,20 +14,21 @@ import (
 
 // Handler contains the necessary clients and configuration for handling commands
 type Handler struct {
-	Bot                   *tgbotapi.BotAPI
-	Client                *transmission.TransmissionClient
-	BotToken              string // used to download files from Telegram
-	DefaultTorrentLocation string // directory where received .torrent files are saved before adding to Transmission
-	NoLive                bool
-	Interval              time.Duration
-	Duration              int
-	UpdateMaxIterations   int // max live-update iterations per message (0 = disable live updates)
-	Replacer              StringReplacer
-	SendMessage           MessageSender
-	Logger                Logger
-	OutputFormatByCommand map[string]string // canonical command name -> "markdown" or "plain"
-	OutputStringByCommand map[string]string // canonical command name -> format string for output
-	ListOutputByCommand   map[string]bool   // when true, output_string is used to format each line of list output
+	Bot                     *tgbotapi.BotAPI
+	Client                  *transmission.TransmissionClient
+	BotToken                string // used to download files from Telegram
+	DefaultTorrentLocation  string // directory where received .torrent files are saved before adding to Transmission
+	DefaultDownloadLocation string // directory where downloaded files are stored
+	NoLive                  bool
+	Interval                time.Duration
+	Duration                int
+	UpdateMaxIterations     int // max live-update iterations per message (0 = disable live updates)
+	Replacer                StringReplacer
+	SendMessage             MessageSender
+	Logger                  Logger
+	OutputFormatByCommand   map[string]string // canonical command name -> "markdown" or "plain"
+	OutputStringByCommand   map[string]string // canonical command name -> format string for output
+	ListOutputByCommand     map[string]bool   // when true, output_string is used to format each line of list output
 }
 
 // FormatOutputString formats a string using output_string from commands.json if available, otherwise uses "(RAW) %s".
@@ -163,7 +164,7 @@ func (h *Handler) Head(ud tgbotapi.Update, tokens []string, cmd string) {
 	go func() {
 		liveBuf := new(bytes.Buffer)
 		for i := 0; i < iterations; i++ {
-			time.Sleep(time.Second * h.Interval)
+			time.Sleep(h.Interval)
 			liveBuf.Reset()
 
 			torrents, err := h.Client.GetTorrents()
@@ -183,7 +184,11 @@ func (h *Handler) Head(ud tgbotapi.Update, tokens []string, cmd string) {
 			}
 			editConf := tgbotapi.NewEditMessageText(chatID, msgID, liveBuf.String())
 			editConf.ParseMode = tgbotapi.ModeMarkdown
-			h.Bot.Send(editConf)
+			if resp, err := h.Bot.Send(editConf); err != nil {
+				h.Logger.Printf("[DEBUG] EditMessage failed: ChatID=%d MsgID=%d Len=%d Err=%v", chatID, msgID, len(liveBuf.String()), err)
+			} else {
+				h.Logger.Printf("[DEBUG] EditMessage sent: ChatID=%d MsgID=%d RespMessageID=%d", chatID, msgID, resp.MessageID)
+			}
 		}
 	}()
 }
@@ -243,7 +248,7 @@ func (h *Handler) Tail(ud tgbotapi.Update, tokens []string, cmd string) {
 	go func() {
 		liveBuf := new(bytes.Buffer)
 		for i := 0; i < iterations; i++ {
-			time.Sleep(time.Second * h.Interval)
+			time.Sleep(h.Interval)
 			liveBuf.Reset()
 
 			torrents, err := h.Client.GetTorrents()
@@ -263,7 +268,11 @@ func (h *Handler) Tail(ud tgbotapi.Update, tokens []string, cmd string) {
 			}
 			editConf := tgbotapi.NewEditMessageText(chatID, msgID, liveBuf.String())
 			editConf.ParseMode = tgbotapi.ModeMarkdown
-			h.Bot.Send(editConf)
+			if resp, err := h.Bot.Send(editConf); err != nil {
+				h.Logger.Printf("[DEBUG] EditMessage failed: ChatID=%d MsgID=%d Len=%d Err=%v", chatID, msgID, len(liveBuf.String()), err)
+			} else {
+				h.Logger.Printf("[DEBUG] EditMessage sent: ChatID=%d MsgID=%d RespMessageID=%d", chatID, msgID, resp.MessageID)
+			}
 		}
 	}()
 }

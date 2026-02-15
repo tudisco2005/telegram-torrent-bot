@@ -8,7 +8,7 @@
         "ls"
       ],
       "description": "Lists all the torrents",
-      "output_format": "plain",
+      "output_format": "markdown",
       "list_output": true,
       "output_string": "<%d> %s\n"
     },
@@ -43,7 +43,7 @@
         "dg"
       ],
       "description": "Lists downloading torrents",
-      "output_format": "plain",
+      "output_format": "markdown",
       "list_output": true,
       "output_string": "<%d> %s\n"
     },
@@ -54,7 +54,7 @@
         "sd"
       ],
       "description": "Lists seeding torrents",
-      "output_format": "plain",
+      "output_format": "markdown",
       "list_output": true,
       "output_string": "<%d> %s\n"
     },
@@ -65,7 +65,7 @@
         "pa"
       ],
       "description": "Lists paused torrents",
-      "output_format": "plain",
+      "output_format": "markdown",
       "list_output": true,
       "output_string": "<%d> %s\n"
     },
@@ -76,7 +76,7 @@
         "ch"
       ],
       "description": "Lists torrents being verified",
-      "output_format": "plain",
+      "output_format": "markdown",
       "list_output": true,
       "output_string": "<%d> %s\n"
     },
@@ -98,7 +98,7 @@
         "er"
       ],
       "description": "Lists torrents with errors",
-      "output_format": "plain",
+      "output_format": "markdown",
       "list_output": true,
       "output_string": "<%d> %s\n%s\n\n"
     },
@@ -110,7 +110,7 @@
       ],
       "description": "Manipulate sorting",
       "example": "/sort [option]",
-      "output_format": "plain",
+      "output_format": "markdown",
       "list_output": false,
       "output_string": "*sort:* %s"
     },
@@ -121,7 +121,7 @@
         "tr"
       ],
       "description": "Lists all trackers",
-      "output_format": "plain",
+      "output_format": "markdown",
       "list_output": true,
       "output_string": "%d - %s\n"
     },
@@ -133,7 +133,7 @@
       ],
       "description": "Set download directory",
       "example": "/downloaddir /path/to/directory",
-      "output_format": "plain",
+      "output_format": "markdown",
       "list_output": false,
       "output_string": "*downloaddir:* downloaddir has been successfully changed to %s"
     },
@@ -145,7 +145,7 @@
       ],
       "description": "Add URLs or magnets",
       "example": "/add <magnet-link> or /add <http-url>",
-      "output_format": "plain",
+      "output_format": "markdown",
       "list_output": false,
       "output_string": "*Added:* %s"
     },
@@ -157,7 +157,7 @@
       ],
       "description": "Search torrents by name",
       "example": "/search <query>",
-      "output_format": "plain",
+      "output_format": "markdown",
       "list_output": true,
       "output_string": "<%d> %s\n"
     },
@@ -169,9 +169,9 @@
       ],
       "description": "Lists newest torrents",
       "example": "/latest 5",
-      "output_format": "plain",
+      "output_format": "markdown",
       "list_output": true,
-      "output_string": "<%d> %s\n"
+      "output_string": "`<%d>` %s\n"
     },
     {
       "name": "info",
@@ -193,7 +193,7 @@
       ],
       "description": "Stop torrents",
       "example": "/stop <id1> <id2> or /stop all",
-      "output_format": "plain",
+      "output_format": "markdown",
       "list_output": false,
       "output_string": "[%s] *stop:* %s"
     },
@@ -205,7 +205,7 @@
       ],
       "description": "Start torrents",
       "example": "/start <id1> <id2> or /start all",
-      "output_format": "plain",
+      "output_format": "markdown",
       "list_output": false,
       "output_string": "[%s] *start:* %s"
     },
@@ -217,7 +217,7 @@
       ],
       "description": "Verify torrents",
       "example": "/check <id1> <id2> or /check all",
-      "output_format": "plain",
+      "output_format": "markdown",
       "list_output": false,
       "output_string": "[%s] *check:* %s"
     },
@@ -229,7 +229,7 @@
       ],
       "description": "Delete torrents",
       "example": "/del <id1> <id2>",
-      "output_format": "plain",
+      "output_format": "markdown",
       "list_output": false,
       "output_string": "*Deleted:* %s"
     },
@@ -239,7 +239,7 @@
       "aliases": [],
       "description": "Delete torrents and their data",
       "example": "/deldata <id1> <id2>",
-      "output_format": "plain",
+      "output_format": "markdown",
       "list_output": false,
       "output_string": "*Deleted:* %s"
     },
@@ -262,7 +262,7 @@
       ],
       "description": "Set download speed limit",
       "example": "/downlimit 1024",
-      "output_format": "plain",
+      "output_format": "markdown",
       "list_output": false,
       "output_string": "*downlimit:* limit has been successfully changed to %d KB/s"
     },
@@ -274,7 +274,7 @@
       ],
       "description": "Set upload speed limit",
       "example": "/uplimit 512",
-      "output_format": "plain",
+      "output_format": "markdown",
       "list_output": false,
       "output_string": "*uplimit:* limit has been successfully changed to %d KB/s"
     },
@@ -285,7 +285,7 @@
         "ss"
       ],
       "description": "Show upload/download speeds",
-      "output_format": "plain",
+      "output_format": "markdown",
       "list_output": false,
       "output_string": "↓ %s  ↑ %s"
     },
@@ -296,7 +296,7 @@
         "co"
       ],
       "description": "Show torrents count per status",
-      "output_format": "plain",
+      "output_format": "markdown",
       "list_output": false,
       "output_string": "Downloading: %d\nSeeding: %d\nPaused: %d\nVerifying: %d\n\n- Waiting to -\nDownload: %d\nSeed: %d\nVerify: %d\n\nTotal: %d"
     },

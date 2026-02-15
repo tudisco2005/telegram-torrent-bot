@@ -18,6 +18,7 @@ type EnvConfig struct {
 	LogFile                *string
 	TransLogFile           *string
 	DefaultTorrentLocation *string // directory where received .torrent files are saved before adding to Transmission
+	DefaultDownloadLocation *string // directory where downloaded data will be stored
 	NoLive                 *bool
 	Verbose                *bool
 	UpdateMaxIterations    *int // max live-update iterations per message (0 = use Duration, no extra limit)
@@ -98,6 +99,13 @@ func LoadEnvironmentConfig(cfg *EnvConfig) {
 	if cfg.DefaultTorrentLocation != nil && *cfg.DefaultTorrentLocation == "" {
 		if dir := os.Getenv("DEFAULT_TORRENT_LOCATION"); dir != "" {
 			*cfg.DefaultTorrentLocation = dir
+		}
+	}
+
+	// DefaultDownloadLocation: check DEFAULT_DOWNLOAD_LOCATION
+	if cfg.DefaultDownloadLocation != nil && *cfg.DefaultDownloadLocation == "" {
+		if dir := os.Getenv("DEFAULT_DOWNLOAD_LOCATION"); dir != "" {
+			*cfg.DefaultDownloadLocation = dir
 		}
 	}
 

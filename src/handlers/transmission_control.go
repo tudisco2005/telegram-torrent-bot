@@ -248,19 +248,27 @@ func (h *Handler) Speed(ud tgbotapi.Update, cmd string) {
 
 	go func() {
 		for i := 0; i < iterations; i++ {
-			time.Sleep(time.Second * h.Interval)
+			time.Sleep(h.Interval)
 			stats, err := h.Client.GetStats()
 			if err != nil {
 				break
 			}
 			msg := h.FormatOutputString(cmd, humanize.Bytes(stats.DownloadSpeed), humanize.Bytes(stats.UploadSpeed))
 			editConf := tgbotapi.NewEditMessageText(chatID, msgID, msg)
-			h.Bot.Send(editConf)
-			time.Sleep(time.Second * h.Interval)
+			if resp, err := h.Bot.Send(editConf); err != nil {
+				h.Logger.Printf("[DEBUG] EditMessage failed: ChatID=%d MsgID=%d Len=%d Err=%v", chatID, msgID, len(msg), err)
+			} else {
+				h.Logger.Printf("[DEBUG] EditMessage sent: ChatID=%d MsgID=%d RespMessageID=%d", chatID, msgID, resp.MessageID)
+			}
+			time.Sleep(h.Interval)
 		}
-		time.Sleep(time.Second * h.Interval)
+		time.Sleep(h.Interval)
 		editConf := tgbotapi.NewEditMessageText(chatID, msgID, "↓ - B  ↑ - B")
-		h.Bot.Send(editConf)
+		if resp, err := h.Bot.Send(editConf); err != nil {
+			h.Logger.Printf("[DEBUG] EditMessage failed: ChatID=%d MsgID=%d Len=%d Err=%v", chatID, msgID, len("↓ - B  ↑ - B"), err)
+		} else {
+			h.Logger.Printf("[DEBUG] EditMessage sent: ChatID=%d MsgID=%d RespMessageID=%d", chatID, msgID, resp.MessageID)
+		}
 	}()
 }
 

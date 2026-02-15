@@ -12,6 +12,13 @@ if [ ! -f "../bin/telegram-torrent-bot" ]; then
     go build -o ../bin/telegram-torrent-bot || exit 1
 fi
 
+chmod 777 ../move.sh
+
+if ! transmission-remote -n transmission:transmission --torrent-done-script "/home/dipi/MyTorrentBot/bot/move.sh"; then
+    echo "Warning: Failed to configure transmission-remote, Downloads will remain in trasmission default folder."
+    exit 1
+fi
+
 # Esegui il bot con tutti gli argomenti passati
 # Se non vengono passati argomenti, il bot leggerà i valori dal file .env
 chmod +x ../bin/telegram-torrent-bot

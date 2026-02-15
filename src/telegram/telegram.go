@@ -78,22 +78,22 @@ func LoadCategories(path string) (*Categories, error) {
 
 // BotConfig holds telegram bot configuration
 type BotConfig struct {
-	Bot          *tgbotapi.BotAPI
-	Updates      <-chan tgbotapi.Update
-	Masters      config.MasterSlice
-	Client       *transmission.TransmissionClient
-	NoLive               bool
-	Interval             time.Duration
-	Duration             int
-	UpdateMaxIterations  int // max live-update iterations per message (0 = use Duration)
-	Logger               *log.Logger
-	SendMessage  MessageSender
-	ChatID                 int64
-	TransLogFile           string
-	DefaultTorrentLocation string // directory where received .torrent files are saved before adding to Transmission
+	Bot                     *tgbotapi.BotAPI
+	Updates                 <-chan tgbotapi.Update
+	Masters                 config.MasterSlice
+	Client                  *transmission.TransmissionClient
+	NoLive                  bool
+	Interval                time.Duration
+	Duration                int
+	UpdateMaxIterations     int // max live-update iterations per message (0 = use Duration)
+	Logger                  *log.Logger
+	SendMessage             MessageSender
+	ChatID                  int64
+	TransLogFile            string
+	DefaultTorrentLocation  string // directory where received .torrent files are saved before adding to Transmission
 	DefaultDownloadLocation string // directory where downloaded files are stored
-	VERSION                string
-	Verbose                bool
+	VERSION                 string
+	Verbose                 bool
 }
 
 // MessageSender interface for sending messages
@@ -166,21 +166,21 @@ func Start(cfg *BotConfig) {
 
 	// Create handler
 	h := &handlers.Handler{
-		Bot:                   cfg.Bot,
-		Client:                cfg.Client,
-		BotToken:              cfg.Bot.Token,
-		DefaultTorrentLocation: cfg.DefaultTorrentLocation,
+		Bot:                     cfg.Bot,
+		Client:                  cfg.Client,
+		BotToken:                cfg.Bot.Token,
+		DefaultTorrentLocation:  cfg.DefaultTorrentLocation,
 		DefaultDownloadLocation: cfg.DefaultDownloadLocation,
-		NoLive:                cfg.NoLive,
-		Interval:              cfg.Interval * time.Second,
-		Duration:              cfg.Duration,
-		UpdateMaxIterations:   cfg.UpdateMaxIterations,
-		Replacer:              utils.MarkdownReplacer,
-		SendMessage:           cfg.SendMessage,
-		Logger:                cfg.Logger,
-		OutputFormatByCommand: outputFormatByCommand,
-		OutputStringByCommand: outputStringByCommand,
-		ListOutputByCommand:   listOutputByCommand,
+		NoLive:                  cfg.NoLive,
+		Interval:                cfg.Interval * time.Second,
+		Duration:                cfg.Duration,
+		UpdateMaxIterations:     cfg.UpdateMaxIterations,
+		Replacer:                utils.MarkdownReplacer,
+		SendMessage:             cfg.SendMessage,
+		Logger:                  cfg.Logger,
+		OutputFormatByCommand:   outputFormatByCommand,
+		OutputStringByCommand:   outputStringByCommand,
+		ListOutputByCommand:     listOutputByCommand,
 	}
 
 	// Main event loop
@@ -243,17 +243,30 @@ func Start(cfg *BotConfig) {
 		// tokenize the update
 		tokens := strings.Split(update.Message.Text, " ")
 
-		// preprocess message based on URL schema
+		// Extract command and remove '/' prefix if present
+		command := strings.TrimPrefix(strings.ToLower(tokens[0]), "/")
+		var args []string
+		if len(tokens) > 1 {
+			args = tokens[1:]
+		}
+
+		// If message is a bare URL/magnet (no leading /add), treat it as an add command
 		if strings.HasPrefix(tokens[0], "magnet") || strings.HasPrefix(tokens[0], "http") {
 			if cfg.Verbose {
 				cfg.Logger.Printf("[DEBUG] Detected URL/magnet link, prepending 'add' command")
 			}
-			tokens = append([]string{"add"}, tokens...)
+			command = "add"
+			args = []string{update.Message.Text}
 		}
 
-		// Extract command and remove '/' prefix if present
-		command := strings.TrimPrefix(strings.ToLower(tokens[0]), "/")
-		args := tokens[1:]
+		// If this is an add command and the first arg looks like a URL/magnet,
+		// join all remaining tokens into a single argument to avoid splitting on spaces
+		if command == "add" && len(args) > 0 && (strings.HasPrefix(args[0], "magnet") || strings.HasPrefix(args[0], "http")) {
+			if cfg.Verbose {
+				cfg.Logger.Printf("[DEBUG] Detected add with split URL, joining args into single URL")
+			}
+			args = []string{strings.Join(args, " ")}
+		}
 
 		if cfg.Verbose {
 			cfg.Logger.Printf("[DEBUG] Processing command: %s, args: %v", command, args)

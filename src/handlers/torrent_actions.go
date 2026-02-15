@@ -40,6 +40,7 @@ func (h *Handler) Add(ud tgbotapi.Update, tokens []string, cmd string) {
 		return
 	}
 
+	var buf bytes.Buffer
 	for _, url := range tokens {
 		addCmd := transmission.NewAddCmdByURL(url)
 		added, err := h.Client.ExecuteAddCommand(addCmd)
@@ -47,8 +48,22 @@ func (h *Handler) Add(ud tgbotapi.Update, tokens []string, cmd string) {
 			h.SendWithFormat(ud.Message.Chat.ID, "*add:* "+err.Error()+" — "+url, cmd)
 			continue
 		}
-		msg := h.FormatOutputString(cmd, added.Name)
-		h.SendWithFormat(ud.Message.Chat.ID, msg, cmd)
+
+		// Debug: log the returned added struct and URL to help diagnose multiple empty names
+		h.Logger.Printf("[DEBUG] Add: url=%s added=%#v", url, added)
+
+		// collect successful adds and send a single combined message later
+		buf.WriteString(h.FormatOutputString(cmd, added.Name))
+		// ensure newline separation when FormatOutputString does not include it
+		if !strings.HasSuffix(buf.String(), "\n") {
+			buf.WriteString("\n")
+		}
+	}
+
+	if buf.Len() > 0 {
+		// Trim trailing newline
+		out := strings.TrimRight(buf.String(), "\n")
+		h.SendWithFormat(ud.Message.Chat.ID, out, cmd)
 	}
 }
 

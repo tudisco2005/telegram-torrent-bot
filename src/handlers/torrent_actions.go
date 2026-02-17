@@ -326,7 +326,7 @@ func (h *Handler) Latest(ud tgbotapi.Update, tokens []string, cmd string) {
 		buf.WriteString(h.FormatOutputString(cmd, torrents[i].ID, torrents[i].Name))
 	}
 	if buf.Len() == 0 {
-		h.SendWithFormat(ud.Message.Chat.ID, "*latest:* No torrents", cmd)
+		h.SendWithFormat(ud.Message.Chat.ID, "*latest:* No torrents", cmd, "markdown")
 		return
 	}
 	h.SendWithFormat(ud.Message.Chat.ID, buf.String(), cmd)

@@ -7,7 +7,7 @@ this project is based on the original (transmission-telegram)[https://github.com
 - code divided in separeted files for better further developing
 
 new feature:
-- move.sh: after a torrent is completed is moved to a ./data/copleted folder inside the bot folder
+- move.sh: after a torrent is completed is moved to a ./data/copleted folder inside the bot folder and make a link so we can continue seeding, when /deldata only the link file is deleted
 - save .torrent files in ./data/torrents folder inside the bot folder
 - verbose logging of events
 
@@ -57,6 +57,9 @@ chmod -R o+rx /home/<YOUR_USER>/MyTorrentBot/bot
 sudo chgrp debian-transmission /home/<YOUR_USER>/MyTorrentBot/bot/data/completed/ 
 sudo chmod g+w /home/<YOUR_USER>/MyTorrentBot/bot/data/completed/
 
+sudo chgrp debian-transmission /home/dipi/MyTorrentBot/bot/log/
+sudo chmod g+w /home/dipi/MyTorrentBot/bot/log/
+
 ### setup the env variable
 cp .env.example .env
 
@@ -94,10 +97,10 @@ warning you need to give transmission the permission
 other env paramether:
 DEFAULT_TORRENT_LOCATION=
 LOGFILE=
-TRANSMISSION_LOGFILE=
 VERBOSE=0
 
 ### to do
 - [ ] dockerize
 - [ ] clear the code
 - [ ] custom buttons
+- [ ] notify user when donwnload is complete

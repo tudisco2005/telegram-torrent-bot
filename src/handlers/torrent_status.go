@@ -53,7 +53,7 @@ func (h *Handler) Seeding(ud tgbotapi.Update, cmd string) {
 	}
 
 	if buf.Len() == 0 {
-		h.SendWithFormat(ud.Message.Chat.ID, "No torrents seeding", cmd)
+		h.SendWithFormat(ud.Message.Chat.ID, "No torrents seeding", cmd, "plain")
 		return
 	}
 
@@ -100,7 +100,7 @@ func (h *Handler) Checking(ud tgbotapi.Update, cmd string) {
 	}
 
 	if buf.Len() == 0 {
-		h.SendWithFormat(ud.Message.Chat.ID, "No torrents verifying", cmd)
+		h.SendWithFormat(ud.Message.Chat.ID, "No torrents verifying", cmd, "plain")
 		return
 	}
 

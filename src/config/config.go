@@ -15,7 +15,6 @@ type Config struct {
 	Username     string
 	Password     string
 	LogFile      string
-	TransLogFile string
 	NoLive       bool
 	Logger       *log.Logger
 }

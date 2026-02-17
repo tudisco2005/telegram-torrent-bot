@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"io"
 	"fmt"
 	"os"
 	"strings"
@@ -20,7 +21,6 @@ func InitFlags(cfg *AppConfig) error {
 	flag.StringVar(&cfg.Username, "username", "", "Transmission username")
 	flag.StringVar(&cfg.Password, "password", "", "Transmission password")
 	flag.StringVar(&cfg.LogFile, "logfile", "", "Send logs to a file")
-	flag.StringVar(&cfg.TransLogFile, "transmission-logfile", "", "Open transmission logfile to monitor torrents completion")
 	flag.BoolVar(&cfg.NoLive, "no-live", false, "Don't edit and update info after sending")
 	flag.BoolVar(&cfg.Verbose, "verbose", false, "Enable verbose debug logging (prints all received messages and more)")
 
@@ -40,7 +40,6 @@ func InitFlags(cfg *AppConfig) error {
 		Username:                &cfg.Username,
 		Password:                &cfg.Password,
 		LogFile:                 &cfg.LogFile,
-		TransLogFile:            &cfg.TransLogFile,
 		DefaultTorrentLocation:  &cfg.DefaultTorrentLocation,
 		DefaultDownloadLocation: &cfg.DefaultDownloadLocation,
 		NoLive:                  &cfg.NoLive,
@@ -68,17 +67,12 @@ func InitFlags(cfg *AppConfig) error {
 		if err != nil {
 			return err
 		}
-		cfg.Logger.SetOutput(logf)
-	}
-
-	// if we got a transmission log file, monitor it for torrents completion to notify upon them.
-	if cfg.TransLogFile != "" {
-		go func() {
-			// Note: Transmission log file monitoring implementation
-			// This feature monitors the transmission log file for completion events
-			// Placeholder implementation - actual tailer setup would be done here
-			cfg.Logger.Printf("[INFO] Transmission log monitoring initialized: %s\n", cfg.TransLogFile)
-		}()
+		
+		// Crea un MultiWriter che scrive sia su stdout che sul file
+		multiWriter := io.MultiWriter(os.Stdout, logf)
+		
+		// Imposta il MultiWriter come output del logger
+		cfg.Logger.SetOutput(multiWriter)
 	}
 
 	// log the flags

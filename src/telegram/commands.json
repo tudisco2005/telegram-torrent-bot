@@ -8,7 +8,7 @@
         "ls"
       ],
       "description": "Lists all the torrents",
-      "output_format": "markdown",
+      "output_format": "markdown", 
       "list_output": true,
       "output_string": "`<%d>` %s\n"
     },

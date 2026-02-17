@@ -3,7 +3,7 @@
 # --- CONFIGURAZIONE ---
 # IMPORTANTE: NON mettere spazi prima o dopo l'uguale!
 DESTINAZIONE="/home/dipi/MyTorrentBot/bot/data/downloads"
-LOGFILE="/home/dipi/MyTorrentBot/bot/data/transmission-move.log"
+LOGFILE="/home/dipi/MyTorrentBot/bot/log/transmission-move.log"
 
 # --- LOGICA ---
 
@@ -47,4 +47,15 @@ if [ $STATUS -eq 0 ]; then
     echo "[SUCCESS] Spostamento riuscito." >> "$LOGFILE"
 else
     echo "[ERRORE] Codice errore mv: $STATUS" >> "$LOGFILE"
+fi
+
+# create a link to allow continue seeding from the new location
+ln -s "$DESTINAZIONE/$TR_TORRENT_NAME" "$FULL_PATH" 2>> "$LOGFILE"
+
+STATUS=$?
+
+if [ $STATUS -eq 0 ]; then
+    echo "[SUCCESS] Link creato." >> "$LOGFILE"
+else
+    echo "[ERRORE] Codice errore ln: $STATUS" >> "$LOGFILE"
 fi

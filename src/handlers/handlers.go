@@ -41,11 +41,19 @@ func (h *Handler) FormatOutputString(command string, args ...interface{}) string
 }
 
 // SendWithFormat sends a message using the output_format defined in commands.json for the given command.
-func (h *Handler) SendWithFormat(chatID int64, text string, command string) int {
+func (h *Handler) SendWithFormat(chatID int64, text string, command string, args ...interface{}) int {
 	format := h.OutputFormatByCommand[command]
+
 	if format != "markdown" && format != "plain" {
-		format = "plain"
+		format = "plain" // default to plain if not specified or invalid
 	}
+
+	if len(args) > 0 {
+		if args[len(args)-1] == "markdown" || args[len(args)-1] == "plain" {
+			format = args[len(args)-1].(string)
+		}
+	}
+
 	return h.SendMessage.Send(text, chatID, format == "markdown")
 }
 
@@ -99,10 +107,10 @@ func (h *Handler) List(ud tgbotapi.Update, tokens []string, cmd string) {
 	if buf.Len() == 0 {
 		// if we got a tracker query show different message
 		if len(tokens) != 0 {
-			h.SendWithFormat(ud.Message.Chat.ID, "*list:* no matches", cmd)
+			h.SendWithFormat(ud.Message.Chat.ID, "*list:* no matches", cmd, "markdown")
 			return
 		}
-		h.SendWithFormat(ud.Message.Chat.ID, "*list:* no torrents", cmd)
+		h.SendWithFormat(ud.Message.Chat.ID, "*list:* no torrents", cmd, "markdown")
 		return
 	}
 
@@ -229,7 +237,7 @@ func (h *Handler) Tail(ud tgbotapi.Update, tokens []string, cmd string) {
 	}
 
 	if buf.Len() == 0 {
-		h.SendWithFormat(ud.Message.Chat.ID, "*tail:* no torrents", cmd)
+		h.SendWithFormat(ud.Message.Chat.ID, "*tail:* no torrents", cmd, "markdown")
 		return
 	}
 

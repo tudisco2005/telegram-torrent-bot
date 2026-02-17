@@ -89,7 +89,6 @@ type BotConfig struct {
 	Logger                  *log.Logger
 	SendMessage             MessageSender
 	ChatID                  int64
-	TransLogFile            string
 	DefaultTorrentLocation  string // directory where received .torrent files are saved before adding to Transmission
 	DefaultDownloadLocation string // directory where downloaded files are stored
 	VERSION                 string
@@ -225,11 +224,6 @@ func Start(cfg *BotConfig) {
 
 		if cfg.Verbose {
 			cfg.Logger.Printf("[DEBUG] User %s is authorized master", update.Message.From.UserName)
-		}
-
-		// update chatID for complete notification
-		if cfg.TransLogFile != "" && cfg.ChatID != update.Message.Chat.ID {
-			cfg.ChatID = update.Message.Chat.ID
 		}
 
 		// Skip empty messages
@@ -426,8 +420,11 @@ func dispatchCommand(h *handlers.Handler, cfg *BotConfig, cmds *Commands, update
 		cfg.Logger.Printf("[DEBUG] Dispatching command: %s", command)
 	}
 
+	// Look up command in map and dispatch with canonical name for output_format
+	canonical := getCanonicalName(cmds, command)
+
 	// Handle special case for version command (needs VERSION string)
-	if command == "version" || command == "ver" {
+	if canonical == "version" {
 		if cfg.Verbose {
 			cfg.Logger.Printf("[DEBUG] Executing version command")
 		}
@@ -435,8 +432,8 @@ func dispatchCommand(h *handlers.Handler, cfg *BotConfig, cmds *Commands, update
 		return
 	}
 
-	// Handle help command (use output_format from JSON)
-	if command == "help" {
+	// Handle help command (use output_format from JSON), read alias from JSON
+	if canonical == "help" {
 		if cfg.Verbose {
 			cfg.Logger.Printf("[DEBUG] Executing help command")
 		}
@@ -446,12 +443,11 @@ func dispatchCommand(h *handlers.Handler, cfg *BotConfig, cmds *Commands, update
 		return
 	}
 
-	// Look up command in map and dispatch with canonical name for output_format
-	canonical := getCanonicalName(cmds, command)
 	if handler, exists := cmdMap[command]; exists && canonical != "" {
 		if cfg.Verbose {
 			cfg.Logger.Printf("[DEBUG] Found handler for command: %s (canonical: %s)", command, canonical)
 		}
+
 		handler(h, update, args, canonical)
 		return
 	}

@@ -16,7 +16,6 @@ type EnvConfig struct {
 	Username               *string
 	Password               *string
 	LogFile                *string
-	TransLogFile           *string
 	DefaultTorrentLocation *string // directory where received .torrent files are saved before adding to Transmission
 	DefaultDownloadLocation *string // directory where downloaded data will be stored
 	NoLive                 *bool
@@ -81,17 +80,10 @@ func LoadEnvironmentConfig(cfg *EnvConfig) {
 		}
 	}
 
-	// LogFile: check LOGFILE
+	// LogFile: check BOT_LOGFILE
 	if cfg.LogFile != nil && *cfg.LogFile == "" {
-		if logFile := os.Getenv("LOGFILE"); logFile != "" {
+		if logFile := os.Getenv("BOT_LOGFILE"); logFile != "" {
 			*cfg.LogFile = logFile
-		}
-	}
-
-	// TransLogFile: check TRANSMISSION_LOGFILE
-	if cfg.TransLogFile != nil && *cfg.TransLogFile == "" {
-		if transLogFile := os.Getenv("TRANSMISSION_LOGFILE"); transLogFile != "" {
-			*cfg.TransLogFile = transLogFile
 		}
 	}
 

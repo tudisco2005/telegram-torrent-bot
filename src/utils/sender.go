@@ -1,6 +1,8 @@
 package utils
 
 import (
+	"encoding/json"
+	"os"
 	"strings"
 	"unicode/utf8"
 
@@ -61,4 +63,87 @@ LenCheck:
 	}
 
 	return resp.MessageID
+}
+
+// ChatIDs holds the list of chat IDs loaded from JSON
+type ChatID struct {
+	ChatID int64 `json:"chat_id"`
+	Timestamp int64 `json:"timestamp"`
+}
+
+type ChatIDs struct {
+	ChatIDs []int64 `json:"chat_ids"`
+}
+
+func LoadChatIDs(path string) (ChatIDs, error) {
+	var chatIDs ChatIDs
+	file, err := os.Open(path)
+	if err != nil {
+		return chatIDs, err
+	}
+	defer file.Close()
+
+	decoder := json.NewDecoder(file)
+	if err := decoder.Decode(&chatIDs); err != nil {
+		return ChatIDs{}, err
+	}
+
+	return chatIDs, nil
+}
+
+func SaveChatIDs(chatIDs ChatIDs) string {
+	// load existing chat IDs
+	existingChatIDs, err := LoadChatIDs("telegram/chat.json")
+	if err != nil {
+		existingChatIDs = ChatIDs{ChatIDs: []int64{}}
+	}
+
+	// merge existing and new chat IDs
+	mergedChatIDs := existingChatIDs.ChatIDs
+	for _, newID := range chatIDs.ChatIDs {
+		found := false
+		for _, existingID := range mergedChatIDs {
+			if existingID == newID {
+				found = true
+				break
+			}
+		}
+		if !found {
+			mergedChatIDs = append(mergedChatIDs, newID)
+		}
+	}
+
+	// remove the chat ID older than 30 days
+	oneMonthAgo := int64(30 * 24 * 60 * 60)
+	now := int64(0)
+	for _, chatID := range mergedChatIDs {
+		chatIDObj, err := LoadChatID(chatID)
+		if err != nil {
+			continue
+		}
+		if chatIDObj.Timestamp < now-oneMonthAgo {
+			// remove this chat ID from mergedChatIDs
+			for i, id := range mergedChatIDs {
+				if id == chatID {
+					mergedChatIDs = append(mergedChatIDs[:i], mergedChatIDs[i+1:]...)
+					break
+				}
+			}
+		}
+	}
+
+	// save merged chat IDs back to file
+	file, err := os.OpenFile("telegram/chat.json", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	if err != nil {
+		return err.Error()
+	}
+	defer file.Close()
+
+	encoder := json.NewEncoder(file)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(ChatIDs{ChatIDs: mergedChatIDs}); err != nil {
+		return err.Error()
+	}
+
+	return ""
 }

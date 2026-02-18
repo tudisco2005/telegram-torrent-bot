@@ -1,9 +1,19 @@
 #!/bin/bash
 
 # --- CONFIGURAZIONE ---
-# IMPORTANTE: NON mettere spazi prima o dopo l'uguale!
-DESTINAZIONE="/home/dipi/MyTorrentBot/bot/data/downloads"
-LOGFILE="/home/dipi/MyTorrentBot/bot/log/transmission-move.log"
+DESTINAZIONE="/home/dipi/bot/data/downloads"
+LOGFILE="/home/dipi/bot/log/transmission-move.log"
+
+# check if variable DESTINAZIONE is set, if not set to default
+if [ -z "$DESTINAZIONE" ]; then
+    echo "Error: Variable DESTINAZIONE not defined"
+    exit 1
+fi
+
+if [ -z "$LOGFILE" ]; then
+    echo "Error: Variable LOGFILE not defined"
+    exit 1
+fi
 
 # --- LOGICA ---
 

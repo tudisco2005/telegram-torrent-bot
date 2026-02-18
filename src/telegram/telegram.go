@@ -182,6 +182,23 @@ func Start(cfg *BotConfig) {
 		ListOutputByCommand:     listOutputByCommand,
 	}
 
+	cfg.Logger.Printf("[DEBUG] Bot started with version %s", cfg.VERSION)
+
+	// read chat.json to get chat ID for sending startup message (it can be an array)
+	chatIDs, err := utils.LoadChatIDs("telegram/chat.json")
+	if err != nil || len(chatIDs) == 0 {
+		cfg.Logger.Printf("Warning: Failed to load chat IDs from JSON: %v", err)
+		cfg.ChatID = 0 // fallback to 0, which will cause sendMessage to fail gracefully
+	}
+
+	// Send startup message to all chat IDs loaded from JSON (if any)
+	startupMsg := fmt.Sprintf("*Bot Online!*\nVersion: %s\n\nSend 'help' for list of commands.", cfg.VERSION)
+	for _, chatID := range chatIDs {
+		cfg.SendMessage.Send(startupMsg, chatID, true)
+	}
+
+	cfg.Logger.Printf("[DEBUG] Startup message sent to %d chat(s)", len(chatIDs))
+
 	// Main event loop
 	for update := range cfg.Updates {
 		// Verbose logging: log all updates received

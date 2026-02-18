@@ -11,6 +11,7 @@
 bin/
 data/
 log/
+chat.json
 
 # Test binary, built with `go test -c`
 *.test

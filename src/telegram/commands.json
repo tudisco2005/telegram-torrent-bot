@@ -267,12 +267,23 @@
     },
     {
       "name": "uptime",
-      "command_category": "information",
+      "command_category": "general",
       "aliases": [],
       "description": "Show system uptime",
       "output_format": "markdown",
       "list_output": false,
       "output_string": "Uptime: *%s*"
+    },
+    {
+      "name": "diskusage",
+      "command_category": "general",
+      "aliases": [
+        "du"
+      ],
+      "description": "Show used disk space for download directory",
+      "output_format": "markdown",
+      "list_output": false,
+        "output_string": "Disk used: *%s* / *%s* (%d%%)"
     },
     {
       "name": "downlimit",

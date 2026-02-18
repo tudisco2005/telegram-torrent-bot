@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/dustin/go-humanize"
@@ -136,6 +137,25 @@ func (h *Handler) Add(ud tgbotapi.Update, tokens []string, cmd string) {
 			continue
 		}
 
+		// If available space is less than the torrent size, stop it and notify
+		path := h.DefaultDownloadLocation
+		if path == "" {
+			path = "/"
+		}
+		var stat syscall.Statfs_t
+		if err := syscall.Statfs(path, &stat); err == nil {
+			avail := uint64(stat.Bavail) * uint64(stat.Bsize)
+			// Query torrent info to get size when done
+			if torrentFull, err := h.Client.GetTorrent(added.ID); err == nil {
+				if torrentFull.SizeWhenDone > 0 && avail < uint64(torrentFull.SizeWhenDone) {
+					// pause/stop the torrent and inform the user
+					h.Client.StopTorrent(added.ID)
+					h.SendWithFormat(ud.Message.Chat.ID, "Not enough space left, torrent stopped", cmd)
+					continue
+				}
+			}
+		}
+
 		// collect successful adds and send a single combined message later
 		buf.WriteString(h.FormatOutputString(cmd, added.Name))
 		// ensure newline separation when FormatOutputString does not include it
@@ -253,6 +273,24 @@ func (h *Handler) ReceiveTorrent(ud tgbotapi.Update) {
 		return
 	}
 	h.Logger.Printf("[DEBUG] ReceiveTorrent: added to Transmission id=%d name=%q", added.ID, added.Name)
+
+	// Check available space and stop torrent if insufficient
+	path := h.DefaultDownloadLocation
+	if path == "" {
+		path = "/"
+	}
+	var stat syscall.Statfs_t
+	if err := syscall.Statfs(path, &stat); err == nil {
+		avail := uint64(stat.Bavail) * uint64(stat.Bsize)
+		if torrentFull, err := h.Client.GetTorrent(added.ID); err == nil {
+			if torrentFull.SizeWhenDone > 0 && avail < uint64(torrentFull.SizeWhenDone) {
+				h.Client.StopTorrent(added.ID)
+				h.SendWithFormat(ud.Message.Chat.ID, "Not enough space left, torrent stopped", "add")
+				return
+			}
+		}
+	}
+
 	msg := h.FormatOutputString("add", added.Name)
 	h.SendWithFormat(ud.Message.Chat.ID, msg, "add")
 }

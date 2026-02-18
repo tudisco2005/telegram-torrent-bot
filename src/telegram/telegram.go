@@ -173,6 +173,7 @@ func Start(cfg *BotConfig) {
 		DefaultDownloadLocation: cfg.DefaultDownloadLocation,
 		NoLive:                  cfg.NoLive,
 		Interval:                cfg.Interval * time.Second,
+		StartTime:               time.Now(),
 		Duration:                cfg.Duration,
 		UpdateMaxIterations:     cfg.UpdateMaxIterations,
 		Replacer:                utils.MarkdownReplacer,
@@ -425,6 +426,7 @@ func buildCommandMap(cmds *Commands) map[string]CommandHandler {
 
 	// Map command names to their handler functions; handlers receive canonical command name for output_format
 	handlerMap := map[string]CommandHandler{
+		"plist":       func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.Plist(u, a, c) },
 		"list":        func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.List(u, a, c) },
 		"head":        func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.Head(u, a, c) },
 		"tail":        func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.Tail(u, a, c) },
@@ -447,6 +449,7 @@ func buildCommandMap(cmds *Commands) map[string]CommandHandler {
 		"del":         func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.Delete(u, a, c) },
 		"deldata":     func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.DeleteData(u, a, c) },
 		"stats":       func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.Stats(u, c) },
+		"uptime":      func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.Uptime(u, c) },
 		"downlimit":   func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.DownloadLimit(u, a, c) },
 		"uplimit":     func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.UploadLimit(u, a, c) },
 		"speed":       func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.Speed(u, c) },

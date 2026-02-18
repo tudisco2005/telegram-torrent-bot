@@ -22,6 +22,7 @@ type Handler struct {
 	NoLive                  bool
 	Interval                time.Duration
 	Duration                int
+	StartTime               time.Time
 	UpdateMaxIterations     int // max live-update iterations per message (0 = disable live updates)
 	Replacer                StringReplacer
 	SendMessage             MessageSender

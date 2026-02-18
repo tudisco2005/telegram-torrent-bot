@@ -13,6 +13,17 @@
       "output_string": "`<%d>` %s\n"
     },
     {
+      "name": "plist",
+      "command_category": "list",
+      "aliases": [
+        "pl"
+      ],
+      "description": "Pretty list with progress bars",
+      "output_format": "markdown",
+      "list_output": true,
+      "output_string": "`<%d>` *%s* %s\n`%s` %d%% - ETA: %s\n\n"
+    },
+    {
       "name": "head",
       "command_category": "list",
       "aliases": [
@@ -237,7 +248,7 @@
       "name": "deldata",
       "command_category": "management",
       "aliases": [],
-      "description": "Delete torrents and their data",
+      "description": "Delete torrents and their link to data",
       "example": "/deldata <id1> <id2>",
       "output_format": "markdown",
       "list_output": false,
@@ -253,6 +264,15 @@
       "output_format": "markdown",
       "list_output": false,
       "output_string": "\nTotal: *%d*\nActive: *%d*\nPaused: *%d*\n\n_Current Stats_\nDownloaded: *%s*\nUploaded: *%s*\nRunning time: *%s*\n\n_Accumulative Stats_\nSessions: *%d*\nDownloaded: *%s*\nUploaded: *%s*\nTotal Running time: *%s*\n"
+    },
+    {
+      "name": "uptime",
+      "command_category": "information",
+      "aliases": [],
+      "description": "Show system uptime",
+      "output_format": "markdown",
+      "list_output": false,
+      "output_string": "Uptime: *%s*"
     },
     {
       "name": "downlimit",

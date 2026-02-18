@@ -10,6 +10,7 @@ new feature:
 - move.sh: after a torrent is completed is moved to a ./data/copleted folder inside the bot folder and make a link so we can continue seeding, when /deldata only the link file is deleted
 - save .torrent files in ./data/torrents folder inside the bot folder
 - verbose logging of events
+- startup message send to all user not older than a week(default)
 
 ### demo video:
 
@@ -121,9 +122,10 @@ for saving location of torrent in move.sh change DESTINAZIONE
 warning you need to give transmission the permission
 
 other env paramether:
-DEFAULT_TORRENT_LOCATION=
-LOGFILE=
-VERBOSE=0
+DEFAULT_TORRENT_LOCATION= # path for saving .torrent files
+REMOVE_ID_OLDER_THAN= # start up message thressold 
+BOT_LOGFILE= # bot logfile
+VERBOSE=0 # debug information
 
 ### to do
 - [ ] dockerize

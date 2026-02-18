@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -184,20 +185,49 @@ func Start(cfg *BotConfig) {
 
 	cfg.Logger.Printf("[DEBUG] Bot started with version %s", cfg.VERSION)
 
-	// read chat.json to get chat ID for sending startup message (it can be an array)
-	chatIDs, err := utils.LoadChatIDs("telegram/chat.json")
-	if err != nil || len(chatIDs) == 0 {
+	// read chat.json to get chat IDs for sending startup message (it can be an array)
+	chatObjs, err := utils.LoadChatIDs("telegram/chat.json")
+	if err != nil {
 		cfg.Logger.Printf("Warning: Failed to load chat IDs from JSON: %v", err)
-		cfg.ChatID = 0 // fallback to 0, which will cause sendMessage to fail gracefully
+		chatObjs = []utils.ChatID{}
+	}
+
+	// determine remove-older-than setting (seconds) from env var, default 0 (disabled)
+	removeOlderSec := int64(0)
+	if v := os.Getenv("REMOVE_ID_OLDER_THAN"); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil && n >= 0 {
+			removeOlderSec = n
+		} else {
+			cfg.Logger.Printf("[WARNING] Invalid REMOVE_ID_OLDER_THAN value %q, disabling pruning", v)
+			removeOlderSec = 0
+		}
+	}
+
+	// Prune old IDs and persist if pruning changed the list (only when enabled)
+	if removeOlderSec > 0 {
+		now := time.Now().Unix()
+		cutoff := now - removeOlderSec
+		pruned := make([]utils.ChatID, 0, len(chatObjs))
+		for _, c := range chatObjs {
+			if c.Timestamp >= cutoff {
+				pruned = append(pruned, c)
+			}
+		}
+		if len(pruned) != len(chatObjs) {
+			if err := utils.SaveChatIDs("telegram/chat.json", pruned); err != nil {
+				cfg.Logger.Printf("Warning: Failed to save pruned chat IDs: %v", err)
+			}
+			chatObjs = pruned
+		}
 	}
 
 	// Send startup message to all chat IDs loaded from JSON (if any)
 	startupMsg := fmt.Sprintf("*Bot Online!*\nVersion: %s\n\nSend 'help' for list of commands.", cfg.VERSION)
-	for _, chatID := range chatIDs {
-		cfg.SendMessage.Send(startupMsg, chatID, true)
+	for _, chatObj := range chatObjs {
+		cfg.SendMessage.Send(startupMsg, chatObj.ID, true)
 	}
 
-	cfg.Logger.Printf("[DEBUG] Startup message sent to %d chat(s)", len(chatIDs))
+	cfg.Logger.Printf("[DEBUG] Startup message sent to %d chat(s)", len(chatObjs))
 
 	// Main event loop
 	for update := range cfg.Updates {
@@ -228,6 +258,15 @@ func Start(cfg *BotConfig) {
 				cfg.Logger.Printf("[DEBUG] Ignoring update: no message")
 			}
 			continue
+		}
+
+		// Update or add this chat ID in chat.json (refresh timestamp or append)
+		if added, err := utils.AddOrUpdateChatID("telegram/chat.json", update.Message.Chat.ID); err != nil {
+			cfg.Logger.Printf("[WARNING] Failed to add/update chat ID %d: %v", update.Message.Chat.ID, err)
+		} else {
+			if added && cfg.Verbose {
+				cfg.Logger.Printf("[DEBUG] Added new chat ID %d to telegram/chat.json", update.Message.Chat.ID)
+			}
 		}
 
 		// ignore non masters

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	tgbotapi "gopkg.in/telegram-bot-api.v4"
@@ -67,83 +68,84 @@ LenCheck:
 
 // ChatIDs holds the list of chat IDs loaded from JSON
 type ChatID struct {
-	ChatID int64 `json:"chat_id"`
+	ID        int64 `json:"id"`
 	Timestamp int64 `json:"timestamp"`
 }
 
-type ChatIDs struct {
-	ChatIDs []int64 `json:"chat_ids"`
-}
-
-func LoadChatIDs(path string) (ChatIDs, error) {
-	var chatIDs ChatIDs
+// LoadChatIDs loads an array of ChatID objects from the given JSON file.
+// If the file does not exist, it returns an empty slice and nil error.
+func LoadChatIDs(path string) ([]ChatID, error) {
+	var chatIDs []ChatID
 	file, err := os.Open(path)
 	if err != nil {
-		return chatIDs, err
+		if os.IsNotExist(err) {
+			return []ChatID{}, nil
+		}
+		return nil, err
 	}
 	defer file.Close()
 
 	decoder := json.NewDecoder(file)
 	if err := decoder.Decode(&chatIDs); err != nil {
-		return ChatIDs{}, err
+		return nil, err
 	}
 
 	return chatIDs, nil
 }
 
-func SaveChatIDs(chatIDs ChatIDs) string {
-	// load existing chat IDs
-	existingChatIDs, err := LoadChatIDs("telegram/chat.json")
+// SaveChatIDs writes the provided ChatID slice to the given path as pretty JSON.
+func SaveChatIDs(path string, chatIDs []ChatID) error {
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
-		existingChatIDs = ChatIDs{ChatIDs: []int64{}}
-	}
-
-	// merge existing and new chat IDs
-	mergedChatIDs := existingChatIDs.ChatIDs
-	for _, newID := range chatIDs.ChatIDs {
-		found := false
-		for _, existingID := range mergedChatIDs {
-			if existingID == newID {
-				found = true
-				break
-			}
-		}
-		if !found {
-			mergedChatIDs = append(mergedChatIDs, newID)
-		}
-	}
-
-	// remove the chat ID older than 30 days
-	oneMonthAgo := int64(30 * 24 * 60 * 60)
-	now := int64(0)
-	for _, chatID := range mergedChatIDs {
-		chatIDObj, err := LoadChatID(chatID)
-		if err != nil {
-			continue
-		}
-		if chatIDObj.Timestamp < now-oneMonthAgo {
-			// remove this chat ID from mergedChatIDs
-			for i, id := range mergedChatIDs {
-				if id == chatID {
-					mergedChatIDs = append(mergedChatIDs[:i], mergedChatIDs[i+1:]...)
-					break
-				}
-			}
-		}
-	}
-
-	// save merged chat IDs back to file
-	file, err := os.OpenFile("telegram/chat.json", os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
-	if err != nil {
-		return err.Error()
+		return err
 	}
 	defer file.Close()
 
 	encoder := json.NewEncoder(file)
 	encoder.SetIndent("", "  ")
-	if err := encoder.Encode(ChatIDs{ChatIDs: mergedChatIDs}); err != nil {
-		return err.Error()
+	if err := encoder.Encode(chatIDs); err != nil {
+		return err
+	}
+	return nil
+}
+
+// GetIDs extracts just the int64 IDs from ChatID objects.
+func GetIDs(chatIDs []ChatID) []int64 {
+	ids := make([]int64, 0, len(chatIDs))
+	for _, c := range chatIDs {
+		ids = append(ids, c.ID)
+	}
+	return ids
+}
+
+// AddOrUpdateChatID ensures the given chat ID exists in the file, adding it with the current timestamp
+// if missing or updating its timestamp if present. It does NOT prune old entries; pruning is
+// performed once at bot startup by the caller. Returns (added, error) where added=true when
+// a new ChatID was appended (not just updated).
+func AddOrUpdateChatID(path string, id int64) (bool, error) {
+	chatIDs, err := LoadChatIDs(path)
+	if err != nil {
+		return false, err
 	}
 
-	return ""
+	now := time.Now().Unix()
+	found := false
+	for i := range chatIDs {
+		if chatIDs[i].ID == id {
+			chatIDs[i].Timestamp = now
+			found = true
+			break
+		}
+	}
+	added := false
+	if !found {
+		chatIDs = append(chatIDs, ChatID{ID: id, Timestamp: now})
+		added = true
+	}
+
+	if err := SaveChatIDs(path, chatIDs); err != nil {
+		return false, err
+	}
+
+	return added, nil
 }

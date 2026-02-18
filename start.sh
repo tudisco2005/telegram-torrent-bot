@@ -12,7 +12,7 @@ if [ ! -f "../bin/telegram-torrent-bot" ]; then
     go build -o ../bin/telegram-torrent-bot || exit 1
 fi
 
-chmod 777 ./move.sh
+chmod 777 ../move.sh
 
 # check if transmission-remote is available
 if ! command -v transmission-remote &> /dev/null; then

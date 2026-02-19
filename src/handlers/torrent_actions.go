@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	neturl "net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -46,60 +45,10 @@ func (h *Handler) Add(ud tgbotapi.Update, tokens []string, cmd string) {
 			continue
 		}
 
-		// best-effort duplicate detection: compare display name (dn) for magnets
-		// or filename for http(s) .torrent URLs against existing torrent names
-		var candidate string
-		if strings.HasPrefix(link, "magnet") {
-			// Extract display name (dn) from magnet link
-			// Magnet format: magnet:?xt=...&dn=...&tr=...
-			if idx := strings.Index(link, "?"); idx != -1 {
-				queryStr := link[idx+1:]
-				values, err := neturl.ParseQuery(queryStr)
-				if err == nil {
-					dn := values.Get("dn")
-					if dn != "" {
-						// URL decode the display name
-						if decoded, err := neturl.QueryUnescape(dn); err == nil {
-							candidate = decoded
-						} else {
-							candidate = dn
-						}
-					} else {
-						// Fallback to xt (info hash) if dn is not available
-						candidate = values.Get("xt")
-					}
-				}
-			}
-		} else if strings.HasPrefix(link, "http") {
-			if u, err := neturl.Parse(link); err == nil {
-				candidate = strings.TrimSuffix(filepath.Base(u.Path), ".torrent")
-			}
-		}
-
-		// Check if candidate matches any existing torrent name (by name only, check all states)
-		foundDuplicate := false
-		if candidate != "" {
-			for i := range existingTorrents {
-				if strings.EqualFold(existingTorrents[i].Name, candidate) || strings.Contains(strings.ToLower(existingTorrents[i].Name), strings.ToLower(candidate)) {
-					// Check if duplicate is already completed
-					if existingCompleted[existingTorrents[i].ID] {
-						buf.WriteString("duplicated detected, skipping\n")
-					} else {
-						buf.WriteString("duplicated detected (not completed), skipping\n")
-					}
-					foundDuplicate = true
-					break
-				}
-			}
-		}
-
-		// If we found a duplicate by name, skip adding
-		if foundDuplicate {
-			continue
-		}
+		// proceed to add the link (no duplicate-name check)
 
 		addCmd := transmission.NewAddCmdByURL(link)
-		h.Logger.Printf("[DEBUG] Add: attempting to add link=%s candidate=%s", link, candidate)
+		h.Logger.Printf("[DEBUG] Add: attempting to add link=%s", link)
 		added, err := h.Client.ExecuteAddCommand(addCmd)
 		if err != nil {
 			buf.WriteString("*add:* " + err.Error() + " — " + link + "\n")
@@ -109,17 +58,7 @@ func (h *Handler) Add(ud tgbotapi.Update, tokens []string, cmd string) {
 		// Debug: log the returned added struct and URL to help diagnose multiple empty names
 		h.Logger.Printf("[DEBUG] Add: url=%s added=%#v existingID=%v", link, added, existingIDs[added.ID])
 
-		// Check if transmission returned an existing torrent ID (duplicate)
-		if existingIDs[added.ID] {
-			h.Logger.Printf("[DEBUG] Add: detected duplicate by ID=%d", added.ID)
-			// Check if duplicate is already completed
-			if existingCompleted[added.ID] {
-				buf.WriteString("duplicated detected, skipping\n")
-			} else {
-				buf.WriteString("duplicated detected (not completed), skipping\n")
-			}
-			continue
-		}
+		// no duplicate-ID skip: always report added result
 
 		// If available space is less than the torrent size, stop it and notify
 		path := h.DefaultDownloadLocation
@@ -291,23 +230,7 @@ func (h *Handler) ReceiveTorrent(ud tgbotapi.Update) {
 
 	// Add to Transmission from the saved file
 	h.Logger.Printf("[DEBUG] ReceiveTorrent: adding to Transmission from file %s", savePath)
-	// Check by filename against existing torrents to avoid duplicates
-	candidate := strings.TrimSuffix(name, ".torrent")
-	if candidate != "" {
-		if torrents, err := h.Client.GetTorrents(); err == nil {
-			for i := range torrents {
-				if strings.EqualFold(torrents[i].Name, candidate) || strings.Contains(strings.ToLower(torrents[i].Name), strings.ToLower(candidate)) {
-					// Check if duplicate is already completed
-					if torrents[i].PercentDone >= 1.0 {
-						h.SendWithFormat(ud.Message.Chat.ID, "duplicated detected, skipping", "add")
-					} else {
-						h.SendWithFormat(ud.Message.Chat.ID, "duplicated detected (not completed), skipping", "add")
-					}
-					return
-				}
-			}
-		}
-	}
+	// proceed to add uploaded .torrent file (no duplicate-name check)
 
 	addCmd, err := transmission.NewAddCmdByFile(savePath)
 	if err != nil {

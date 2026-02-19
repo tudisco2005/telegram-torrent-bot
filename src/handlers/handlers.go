@@ -94,14 +94,16 @@ func (h *Handler) List(ud tgbotapi.Update, tokens []string, cmd string) {
 		for i := range torrents {
 			for _, tracker := range torrents[i].Trackers {
 				if regx.MatchString(tracker.Announce) {
-					buf.WriteString(h.FormatOutputString(cmd, torrents[i].ID, torrents[i].Name))
+					torrentName := h.Replacer.Replace(torrents[i].Name)
+					buf.WriteString(h.FormatOutputString(cmd, torrents[i].ID, torrentName))
 					break
 				}
 			}
 		}
 	} else { // if we did not get a query, list all torrents
 		for i := range torrents {
-			buf.WriteString(h.FormatOutputString(cmd, torrents[i].ID, torrents[i].Name))
+			torrentName := h.Replacer.Replace(torrents[i].Name)
+			buf.WriteString(h.FormatOutputString(cmd, torrents[i].ID, torrentName))
 		}
 	}
 

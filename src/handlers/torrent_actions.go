@@ -19,22 +19,6 @@ import (
 	tgbotapi "gopkg.in/telegram-bot-api.v4"
 )
 
-// DownloadDir sets the download directory
-func (h *Handler) DownloadDir(ud tgbotapi.Update, tokens []string, cmd string) {
-	if len(tokens) < 1 {
-		h.SendWithFormat(ud.Message.Chat.ID, "Please, specify a path for downloaddir", cmd)
-		return
-	}
-
-	downloadDir := tokens[0]
-
-	// Update in-memory download directory (session-wide). Persisting or applying
-	// to Transmission per-torrent options is not implemented here.
-	h.DefaultDownloadLocation = downloadDir
-	msg := h.FormatOutputString(cmd, downloadDir)
-	h.SendWithFormat(ud.Message.Chat.ID, msg, cmd)
-}
-
 // Add adds torrents from URLs or magnets via Transmission
 func (h *Handler) Add(ud tgbotapi.Update, tokens []string, cmd string) {
 	if len(tokens) == 0 {

@@ -137,18 +137,6 @@
       "output_string": "%d - %s\n"
     },
     {
-      "name": "downloaddir",
-      "command_category": "configuration",
-      "aliases": [
-        "dd"
-      ],
-      "description": "Set download directory",
-      "example": "/downloaddir /path/to/directory",
-      "output_format": "markdown",
-      "list_output": false,
-      "output_string": "*downloaddir:* downloaddir has been successfully changed to %s"
-    },
-    {
       "name": "add",
       "command_category": "management",
       "aliases": [

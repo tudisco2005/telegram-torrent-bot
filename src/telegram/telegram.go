@@ -438,7 +438,6 @@ func buildCommandMap(cmds *Commands) map[string]CommandHandler {
 		"errors":      func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.Errors(u, c) },
 		"sort":        func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.Sort(u, a, c) },
 		"trackers":    func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.Trackers(u, c) },
-		"downloaddir": func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.DownloadDir(u, a, c) },
 		"add":         func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.Add(u, a, c) },
 		"search":      func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.Search(u, a, c) },
 		"latest":      func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.Latest(u, a, c) },

@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # --- CONFIGURAZIONE ---
-DESTINAZIONE="/home/dipi/bot/data/downloads"
+DESTINAZIONE="/home/dipi/bot/data/downloads" # TODO: da prendere da .env
 LOGFILE="/home/dipi/bot/log/transmission-move.log"
 
 # check if variable DESTINAZIONE is set, if not set to default

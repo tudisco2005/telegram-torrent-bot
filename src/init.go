@@ -2,8 +2,8 @@ package main
 
 import (
 	"flag"
-	"io"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -67,10 +67,10 @@ func InitFlags(cfg *AppConfig) error {
 		if err != nil {
 			return err
 		}
-		
+
 		// Crea un MultiWriter che scrive sia su stdout che sul file
 		multiWriter := io.MultiWriter(os.Stdout, logf)
-		
+
 		// Imposta il MultiWriter come output del logger
 		cfg.Logger.SetOutput(multiWriter)
 	}

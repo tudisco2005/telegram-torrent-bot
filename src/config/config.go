@@ -9,14 +9,14 @@ import (
 
 // Config holds the application configuration
 type Config struct {
-	BotToken     string
-	Masters      []string
-	RPCURL       string
-	Username     string
-	Password     string
-	LogFile      string
-	NoLive       bool
-	Logger       *log.Logger
+	BotToken string
+	Masters  []string
+	RPCURL   string
+	Username string
+	Password string
+	LogFile  string
+	NoLive   bool
+	Logger   *log.Logger
 }
 
 // MasterSlice is a type for masters for the flag package to parse them as a slice

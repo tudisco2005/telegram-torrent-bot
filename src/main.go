@@ -18,11 +18,11 @@ const (
 
 // AppConfig holds the application configuration and clients
 type AppConfig struct {
-	BotToken     string
-	Masters      config.MasterSlice
-	RPCURL       string
-	Username     string
-	Password     string
+	BotToken                string
+	Masters                 config.MasterSlice
+	RPCURL                  string
+	Username                string
+	Password                string
 	LogFile                 string
 	DefaultTorrentLocation  string // directory where received .torrent files are saved before adding to Transmission
 	DefaultDownloadLocation string // directory where downloaded files are stored
@@ -55,7 +55,7 @@ type AppConfig struct {
 func main() {
 	// Initialize configuration
 	cfg := &AppConfig{
-		Logger:   log.New(os.Stdout, "", log.LstdFlags),
+		Logger:              log.New(os.Stdout, "", log.LstdFlags),
 		Interval:            5,
 		Duration:            10,
 		UpdateMaxIterations: 0, // 0 = disable live updates
@@ -82,21 +82,21 @@ func main() {
 
 	// Setup message sender
 	botCfg := &telegram.BotConfig{
-		Bot:          cfg.Bot,
-		Updates:      cfg.Updates,
-		Masters:      cfg.Masters,
-		Client:       cfg.Client,
-		NoLive:               cfg.NoLive,
-		Interval:             cfg.Interval,
-		Duration:             cfg.Duration,
-		UpdateMaxIterations:  cfg.UpdateMaxIterations,
-		Logger:               cfg.Logger,
-		SendMessage:  &telegram.SimpleMessageSender{Bot: cfg.Bot, Logger: cfg.Logger, Verbose: cfg.Verbose},
-		ChatID:                 cfg.ChatID,
-		DefaultTorrentLocation: cfg.DefaultTorrentLocation,
+		Bot:                     cfg.Bot,
+		Updates:                 cfg.Updates,
+		Masters:                 cfg.Masters,
+		Client:                  cfg.Client,
+		NoLive:                  cfg.NoLive,
+		Interval:                cfg.Interval,
+		Duration:                cfg.Duration,
+		UpdateMaxIterations:     cfg.UpdateMaxIterations,
+		Logger:                  cfg.Logger,
+		SendMessage:             &telegram.SimpleMessageSender{Bot: cfg.Bot, Logger: cfg.Logger, Verbose: cfg.Verbose},
+		ChatID:                  cfg.ChatID,
+		DefaultTorrentLocation:  cfg.DefaultTorrentLocation,
 		DefaultDownloadLocation: cfg.DefaultDownloadLocation,
-		VERSION:                VERSION,
-		Verbose:                cfg.Verbose,
+		VERSION:                 VERSION,
+		Verbose:                 cfg.Verbose,
 	}
 
 	// Start Telegram bot event loop

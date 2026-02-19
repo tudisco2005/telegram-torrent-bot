@@ -454,7 +454,7 @@ func buildCommandMap(cmds *Commands) map[string]CommandHandler {
 		"uplimit":     func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.UploadLimit(u, a, c) },
 		"speed":       func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.Speed(u, c) },
 		"count":       func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.Count(u, c) },
-		"diskusage":    func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.DiskUsage(u, c) },
+		"diskusage":   func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.DiskUsage(u, c) },
 		// Note: "version" and "help" are handled separately in dispatchCommand
 	}
 

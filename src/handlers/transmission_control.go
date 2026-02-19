@@ -3,6 +3,8 @@ package handlers
 import (
 	"fmt"
 	"strconv"
+	"strings"
+	"syscall"
 	"time"
 
 	"github.com/dustin/go-humanize"
@@ -72,10 +74,46 @@ func (h *Handler) Start(ud tgbotapi.Update, tokens []string, cmd string) {
 			h.SendWithFormat(ud.Message.Chat.ID, "*start:* "+err.Error(), cmd)
 			return
 		}
-		for _, t := range torrents {
-			h.Client.StartTorrent(t.ID)
+		// Check available space and only start torrents that fit
+		path := h.DefaultDownloadLocation
+		if path == "" {
+			path = "/"
 		}
-		h.SendWithFormat(ud.Message.Chat.ID, "Started all torrents", cmd)
+		var stat syscall.Statfs_t
+		var avail uint64
+		if err := syscall.Statfs(path, &stat); err == nil {
+			avail = uint64(stat.Bavail) * uint64(stat.Bsize)
+		}
+
+		started := 0
+		for _, t := range torrents {
+			// If we have size info, check remaining bytes needed
+			if t.SizeWhenDone > 0 {
+				var have uint64
+				if t.Have() > 0 {
+					have = uint64(t.Have())
+				}
+				var remaining uint64
+				if uint64(t.SizeWhenDone) > have {
+					remaining = uint64(t.SizeWhenDone) - have
+				}
+				if remaining > 0 && avail > 0 && avail < remaining {
+					h.SendWithFormat(ud.Message.Chat.ID, fmt.Sprintf("Not enough space left for torrent %s (id=%d), not starting", t.Name, t.ID), cmd)
+					continue
+				}
+			}
+
+			// If Transmission previously reported a disk error, skip and report
+			if t.Error != 0 || strings.Contains(strings.ToLower(t.ErrorString), "no space") {
+				h.SendWithFormat(ud.Message.Chat.ID, fmt.Sprintf("Torrent %s (id=%d) has error: %s", t.Name, t.ID, t.ErrorString), cmd)
+				continue
+			}
+
+			if _, err := h.Client.StartTorrent(t.ID); err == nil {
+				started++
+			}
+		}
+		h.SendWithFormat(ud.Message.Chat.ID, fmt.Sprintf("Started %d torrents", started), cmd)
 		return
 	}
 
@@ -85,13 +123,41 @@ func (h *Handler) Start(ud tgbotapi.Update, tokens []string, cmd string) {
 			h.SendWithFormat(ud.Message.Chat.ID, "*start:* "+err.Error(), cmd)
 			continue
 		}
-		status, err := h.Client.StartTorrent(num)
+		// Before starting, check available disk space for this torrent
+		torrent, err := h.Client.GetTorrent(num)
 		if err != nil {
 			h.SendWithFormat(ud.Message.Chat.ID, "*start:* "+err.Error(), cmd)
 			continue
 		}
 
-		torrent, err := h.Client.GetTorrent(num)
+		path := h.DefaultDownloadLocation
+		if path == "" {
+			path = "/"
+		}
+		var stat syscall.Statfs_t
+		if err := syscall.Statfs(path, &stat); err == nil {
+			avail := uint64(stat.Bavail) * uint64(stat.Bsize)
+			if torrent.SizeWhenDone > 0 {
+				var have uint64
+				if torrent.Have() > 0 {
+					have = uint64(torrent.Have())
+				}
+				var remaining uint64
+				if uint64(torrent.SizeWhenDone) > have {
+					remaining = uint64(torrent.SizeWhenDone) - have
+				}
+				if remaining > 0 && avail > 0 && avail < remaining {
+					h.SendWithFormat(ud.Message.Chat.ID, "Not enough space left, not starting", cmd)
+					continue
+				}
+			}
+			if torrent.Error != 0 || strings.Contains(strings.ToLower(torrent.ErrorString), "no space") {
+				h.SendWithFormat(ud.Message.Chat.ID, "*start:* "+torrent.ErrorString, cmd)
+				continue
+			}
+		}
+
+		status, err := h.Client.StartTorrent(num)
 		if err != nil {
 			h.SendWithFormat(ud.Message.Chat.ID, "*start:* "+err.Error(), cmd)
 			continue

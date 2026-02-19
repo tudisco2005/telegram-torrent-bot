@@ -10,17 +10,17 @@ import (
 
 // EnvConfig holds environment configuration values
 type EnvConfig struct {
-	BotToken               *string
-	Masters                *MasterSlice
-	RPCURL                 *string
-	Username               *string
-	Password               *string
-	LogFile                *string
-	DefaultTorrentLocation *string // directory where received .torrent files are saved before adding to Transmission
+	BotToken                *string
+	Masters                 *MasterSlice
+	RPCURL                  *string
+	Username                *string
+	Password                *string
+	LogFile                 *string
+	DefaultTorrentLocation  *string // directory where received .torrent files are saved before adding to Transmission
 	DefaultDownloadLocation *string // directory where downloaded data will be stored
-	NoLive                 *bool
-	Verbose                *bool
-	UpdateMaxIterations    *int // max live-update iterations per message (0 = use Duration, no extra limit)
+	NoLive                  *bool
+	Verbose                 *bool
+	UpdateMaxIterations     *int // max live-update iterations per message (0 = use Duration, no extra limit)
 }
 
 // LoadEnvironmentConfig loads configuration from .env file and environment variables

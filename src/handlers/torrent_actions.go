@@ -145,12 +145,75 @@ func (h *Handler) Add(ud tgbotapi.Update, tokens []string, cmd string) {
 		var stat syscall.Statfs_t
 		if err := syscall.Statfs(path, &stat); err == nil {
 			avail := uint64(stat.Bavail) * uint64(stat.Bsize)
+
 			// Query torrent info to get size when done
 			if torrentFull, err := h.Client.GetTorrent(added.ID); err == nil {
+				// If size unknown (magnet without metadata), allow Transmission to fetch metadata.
+				// Start a background poller to act once metadata becomes available.
+				if torrentFull.SizeWhenDone == 0 {
+					h.SendWithFormat(ud.Message.Chat.ID, "Added magnet: metadata not available yet — letting Transmission fetch metadata", cmd)
+					go func(tid int, link string) {
+						for i := 0; i < 60; i++ { // ~5 minutes (60 * 5s)
+							time.Sleep(5 * time.Second)
+							t, err := h.Client.GetTorrent(tid)
+							if err != nil {
+								break
+							}
+							// If transmission reports an error during metadata fetch, stop polling
+							if t.Error != 0 || strings.Contains(strings.ToLower(t.ErrorString), "no space") {
+								// attempt to delete to avoid cruft
+								if _, derr := h.Client.DeleteTorrent(tid, false); derr != nil {
+									h.Logger.Printf("[WARNING] failed to delete torrent id=%d after error: %v", tid, derr)
+								}
+								h.SendWithFormat(ud.Message.Chat.ID, "*add:* "+t.ErrorString+" — "+link, cmd)
+								return
+							}
+							if t.SizeWhenDone > 0 {
+								var need uint64
+								if t.Have() > 0 {
+									need = uint64(t.SizeWhenDone) - uint64(t.Have())
+								} else {
+									need = uint64(t.SizeWhenDone)
+								}
+								var st syscall.Statfs_t
+								if err := syscall.Statfs(path, &st); err == nil {
+									availNow := uint64(st.Bavail) * uint64(st.Bsize)
+									if need > 0 && availNow < need {
+										// Not enough space: stop the torrent to avoid filling disk
+										if _, serr := h.Client.StopTorrent(tid); serr == nil {
+											h.SendWithFormat(ud.Message.Chat.ID, fmt.Sprintf("Not enough space for torrent %s (id=%d); torrent stopped", t.Name, tid), cmd)
+										}
+										return
+									}
+								}
+								// Metadata fetched and there is space (or we couldn't statfs): notify user
+								h.SendWithFormat(ud.Message.Chat.ID, fmt.Sprintf("Metadata fetched for torrent %s (id=%d)", t.Name, tid), cmd)
+								return
+							}
+						}
+						// metadata never arrived in time
+						h.SendWithFormat(ud.Message.Chat.ID, "Metadata not available after timeout — no action taken", cmd)
+					}(added.ID, link)
+					continue
+				}
 				if torrentFull.SizeWhenDone > 0 && avail < uint64(torrentFull.SizeWhenDone) {
 					// pause/stop the torrent and inform the user
 					h.Client.StopTorrent(added.ID)
 					h.SendWithFormat(ud.Message.Chat.ID, "Not enough space left, torrent stopped", cmd)
+					continue
+				}
+				// If Transmission reported an error (e.g. unable to write resume file)
+				// remove the torrent and report the error back to the user.
+				if torrentFull.Error != 0 || strings.Contains(strings.ToLower(torrentFull.ErrorString), "no space") {
+					// Attempt to delete the torrent record to clean up
+					if _, derr := h.Client.DeleteTorrent(added.ID, false); derr != nil {
+						h.Logger.Printf("[WARNING] failed to delete torrent id=%d after error: %v", added.ID, derr)
+					}
+					errMsg := torrentFull.ErrorString
+					if errMsg == "" {
+						errMsg = "Not enough space left (transmission reported error)"
+					}
+					h.SendWithFormat(ud.Message.Chat.ID, "*add:* "+errMsg+" — "+link, cmd)
 					continue
 				}
 			}
@@ -283,9 +346,63 @@ func (h *Handler) ReceiveTorrent(ud tgbotapi.Update) {
 	if err := syscall.Statfs(path, &stat); err == nil {
 		avail := uint64(stat.Bavail) * uint64(stat.Bsize)
 		if torrentFull, err := h.Client.GetTorrent(added.ID); err == nil {
+			if torrentFull.SizeWhenDone == 0 {
+				h.SendWithFormat(ud.Message.Chat.ID, "Added torrent: metadata not available yet — letting Transmission fetch metadata", "add")
+				// Poll for metadata and decide later
+				go func(tid int) {
+					for i := 0; i < 60; i++ {
+						time.Sleep(5 * time.Second)
+						t, err := h.Client.GetTorrent(tid)
+						if err != nil {
+							break
+						}
+						if t.Error != 0 || strings.Contains(strings.ToLower(t.ErrorString), "no space") {
+							if _, derr := h.Client.DeleteTorrent(tid, false); derr != nil {
+								h.Logger.Printf("[WARNING] failed to delete torrent id=%d after error: %v", tid, derr)
+							}
+							h.SendWithFormat(ud.Message.Chat.ID, "*add:* "+t.ErrorString, "add")
+							return
+						}
+						if t.SizeWhenDone > 0 {
+							var need uint64
+							if t.Have() > 0 {
+								need = uint64(t.SizeWhenDone) - uint64(t.Have())
+							} else {
+								need = uint64(t.SizeWhenDone)
+							}
+							var st syscall.Statfs_t
+							if err := syscall.Statfs(path, &st); err == nil {
+								availNow := uint64(st.Bavail) * uint64(st.Bsize)
+								if need > 0 && availNow < need {
+									// Not enough space: stop the torrent to avoid filling disk
+									if _, serr := h.Client.StopTorrent(tid); serr == nil {
+										h.SendWithFormat(ud.Message.Chat.ID, fmt.Sprintf("Not enough space for torrent %s (id=%d); torrent stopped", t.Name, tid), "add")
+									}
+									return
+								}
+							}
+							// Metadata fetched and there is space (or we couldn't statfs): notify user
+							h.SendWithFormat(ud.Message.Chat.ID, fmt.Sprintf("Metadata fetched for torrent %s (id=%d)", t.Name, tid), "add")
+							return
+						}
+					}
+					h.SendWithFormat(ud.Message.Chat.ID, "Metadata not available after timeout — no action taken", "add")
+				}(added.ID)
+			}
 			if torrentFull.SizeWhenDone > 0 && avail < uint64(torrentFull.SizeWhenDone) {
 				h.Client.StopTorrent(added.ID)
 				h.SendWithFormat(ud.Message.Chat.ID, "Not enough space left, torrent stopped", "add")
+				return
+			}
+			if torrentFull.Error != 0 || strings.Contains(strings.ToLower(torrentFull.ErrorString), "no space") {
+				if _, derr := h.Client.DeleteTorrent(added.ID, false); derr != nil {
+					h.Logger.Printf("[WARNING] failed to delete torrent id=%d after error: %v", added.ID, derr)
+				}
+				errMsg := torrentFull.ErrorString
+				if errMsg == "" {
+					errMsg = "Not enough space left (transmission reported error)"
+				}
+				h.SendWithFormat(ud.Message.Chat.ID, "*add:* "+errMsg, "add")
 				return
 			}
 		}

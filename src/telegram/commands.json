@@ -16,7 +16,7 @@
       "name": "plist",
       "command_category": "list",
       "aliases": [
-        "pl"
+        "pls"
       ],
       "description": "Pretty list with progress bars",
       "output_format": "markdown",
@@ -111,7 +111,7 @@
       "description": "Lists torrents with errors",
       "output_format": "markdown",
       "list_output": true,
-      "output_string": "<%d> %s\n%s\n\n"
+      "output_string": "`<%d>` %s\n%s\n\n"
     },
     {
       "name": "sort",

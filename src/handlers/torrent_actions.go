@@ -17,9 +17,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/tudisco2005/telegram-torrent-bot/utils"
 	"github.com/dustin/go-humanize"
 	"github.com/pyed/transmission"
+	"github.com/tudisco2005/telegram-torrent-bot/utils"
 	tgbotapi "gopkg.in/telegram-bot-api.v4"
 )
 
@@ -530,10 +530,20 @@ func (h *Handler) Move(ud tgbotapi.Update, tokens []string, cmd string) {
 		_ = json.Unmarshal(data, &moved)
 	}
 
-	// support clearing/resetting the moved.json via `move reset` or `move clear`
+	// support help, clearing the destination, or resetting moved.json
 	if len(tokens) > 0 {
 		tk := strings.ToLower(tokens[0])
-		if tk == "reset" || tk == "clear" {
+		if tk == "?" {
+			help := "move options:\n" +
+				"- `move` : list move status for torrents\n" +
+				"- `move all` : move all not-yet-moved downloads\n" +
+				"- `move <id> [id2 ...]` : move data of specific torrent ids (or filenames)\n" +
+				"- `move reset` : clear moved.json records\n" +
+				"- `move clear` : delete all files/dirs in `DEFAULT_MOVE_LOCATION` (lists deleted files)"
+			h.SendWithFormat(ud.Message.Chat.ID, help, cmd)
+			return
+		}
+		if tk == "reset" {
 			moved = make(map[string]map[string]string)
 			if b, err := json.MarshalIndent(moved, "", "  "); err == nil {
 				if werr := os.WriteFile(movedFile, b, 0644); werr != nil {
@@ -544,7 +554,54 @@ func (h *Handler) Move(ud tgbotapi.Update, tokens []string, cmd string) {
 			} else {
 				h.SendWithFormat(ud.Message.Chat.ID, "move: failed to reset moved.json: "+err.Error(), cmd)
 			}
-			h.Logger.Printf("[DEBUG] Move: moved.json reset/cleared by user command")
+			h.Logger.Printf("[DEBUG] Move: moved.json reset by user command")
+			return
+		}
+		if tk == "clear" {
+			// delete all files/dirs in destination (except hidden and moved.json)
+			dstEntries, derr := os.ReadDir(dst)
+			if derr != nil {
+				h.SendWithFormat(ud.Message.Chat.ID, "move: failed to read destination: "+derr.Error(), cmd)
+				return
+			}
+			var deleted []string
+			var deleteErrs []string
+			for _, ent := range dstEntries {
+				name := ent.Name()
+				if strings.HasPrefix(name, ".") || name == "moved.json" || strings.Contains(name, ".part") || strings.HasSuffix(name, ".crdownload") {
+					continue
+				}
+				p := filepath.Join(dst, name)
+				if err := os.RemoveAll(p); err != nil {
+					deleteErrs = append(deleteErrs, fmt.Sprintf("%s: %v", name, err))
+				} else {
+					deleted = append(deleted, name)
+				}
+			}
+			msg := "move: cleared destination"
+			if len(deleted) > 0 {
+				msg = msg + ": deleted:\n- " + strings.Join(deleted, "\n- ")
+			} else {
+				msg = msg + ": nothing deleted"
+			}
+			if len(deleteErrs) > 0 {
+				msg = msg + "\nErrors: " + strings.Join(deleteErrs, "; ")
+			}
+
+			//update moved.json to clear all records since destination is now cleared
+			moved = make(map[string]map[string]string)
+			if b, err := json.MarshalIndent(moved, "", "  "); err == nil {
+				if werr := os.WriteFile(movedFile, b, 0644); werr != nil {
+					h.Logger.Printf("[WARNING] Move: failed to clear moved.json after clear command: %v", werr)
+				} else {
+					h.Logger.Printf("[DEBUG] Move: cleared moved.json after clear command")
+				}
+			} else {
+				h.Logger.Printf("[WARNING] Move: failed to marshal empty moved.json after clear command: %v", err)
+			}
+
+			h.SendWithFormat(ud.Message.Chat.ID, msg, cmd)
+			h.Logger.Printf("[DEBUG] Move: destination cleared by user command, deleted %d entries", len(deleted))
 			return
 		}
 	}
@@ -864,4 +921,3 @@ func computePathHash(path string) (string, error) {
 	}
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
-

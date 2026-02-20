@@ -246,8 +246,8 @@
       "name": "move",
       "command_category": "management",
       "aliases": [],
-      "description": "Copy completed downloads to `DEFAULT_MOVE_LOCATION`",
-      "example": "/move",
+      "description": "Copy, list, delete downloads to `DEFAULT_MOVE_LOCATION`",
+      "example": "/move ?",
       "output_format": "markdown",
       "list_output": false,
       "output_string": "*move:* %s"

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -247,6 +248,71 @@ func Start(cfg *BotConfig) {
 	}
 
 	cfg.Logger.Printf("[DEBUG] Startup message sent to %d chat(s)", len(chatObjs))
+
+	// Background poller: notify configured chats when a torrent completes downloading
+	go func() {
+		pollInterval := 30 * time.Second
+
+		// load persisted tracked IDs from disk (avoid re-notifying after restart)
+		trackedSlice, err := utils.LoadTracked("telegram/completed.json")
+		if err != nil {
+			cfg.Logger.Printf("[DEBUG] completion poll: failed to load tracked IDs: %v", err)
+			trackedSlice = []int{}
+		}
+		notified := make(map[int]bool)
+		for _, id := range trackedSlice {
+			notified[id] = true
+		}
+
+		for {
+			time.Sleep(pollInterval)
+			// fetch current torrents
+			torrents, err := cfg.Client.GetTorrents()
+			if err != nil {
+				cfg.Logger.Printf("[DEBUG] completion poll: failed to get torrents: %v", err)
+				continue
+			}
+			// reload chat IDs so new chats receive notifications
+			chatObjs, err := utils.LoadChatIDs("telegram/chat.json")
+			if err != nil {
+				cfg.Logger.Printf("[DEBUG] completion poll: failed to load chat IDs: %v", err)
+				continue
+			}
+			chatIDs := utils.GetIDs(chatObjs)
+
+			changed := false
+			for _, t := range torrents {
+				// consider a torrent complete when PercentDone >= 1.0
+				if t.PercentDone >= 1.0 && !notified[t.ID] {
+					msg := fmt.Sprintf("*Download complete!* %s\nID: %d", t.Name, t.ID)
+					for _, cid := range chatIDs {
+						cfg.SendMessage.Send(msg, cid, true)
+					}
+					notified[t.ID] = true
+					changed = true
+				}
+				// if a torrent becomes not-complete again (re-added), remove from tracked/notified
+				if t.PercentDone < 1.0 {
+					if notified[t.ID] {
+						delete(notified, t.ID)
+						changed = true
+					}
+				}
+			}
+
+			if changed {
+				// persist current notified IDs
+				ids := make([]int, 0, len(notified))
+				for id := range notified {
+					ids = append(ids, id)
+				}
+				sort.Ints(ids)
+				if err := utils.SaveTracked("telegram/completed.json", ids); err != nil {
+					cfg.Logger.Printf("[DEBUG] completion poll: failed to save tracked IDs: %v", err)
+				}
+			}
+		}
+	}()
 
 	// Main event loop
 	for update := range cfg.Updates {

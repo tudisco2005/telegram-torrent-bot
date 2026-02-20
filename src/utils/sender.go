@@ -149,3 +149,39 @@ func AddOrUpdateChatID(path string, id int64) (bool, error) {
 
 	return added, nil
 }
+
+// LoadTracked loads an array of tracked torrent IDs from the given JSON file.
+// If the file does not exist, it returns an empty slice and nil error.
+func LoadTracked(path string) ([]int, error) {
+	var ids []int
+	file, err := os.Open(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return []int{}, nil
+		}
+		return nil, err
+	}
+	defer file.Close()
+
+	decoder := json.NewDecoder(file)
+	if err := decoder.Decode(&ids); err != nil {
+		return nil, err
+	}
+	return ids, nil
+}
+
+// SaveTracked writes the provided slice of tracked torrent IDs to the given path as pretty JSON.
+func SaveTracked(path string, ids []int) error {
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	encoder := json.NewEncoder(file)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(ids); err != nil {
+		return err
+	}
+	return nil
+}

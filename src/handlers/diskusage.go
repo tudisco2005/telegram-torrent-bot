@@ -52,7 +52,7 @@ func (h *Handler) DiskUsage(ud tgbotapi.Update, cmd string) {
 			if mtotal > 0 {
 				mpct = int((mused * 100) / mtotal)
 			}
-			mvStatus = humanize.Bytes(mused) + " / " + humanize.Bytes(mtotal) + " (" + strconv.Itoa(mpct) + "% )"
+			mvStatus = humanize.Bytes(mused) + " / " + humanize.Bytes(mtotal) + " (" + strconv.Itoa(mpct) + "%)"
 		} else {
 			mvStatus = "error: " + err.Error()
 		}

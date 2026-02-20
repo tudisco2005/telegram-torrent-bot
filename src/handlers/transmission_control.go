@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/dustin/go-humanize"
+	"github.com/tudisco2005/telegram-torrent-bot/utils"
 	tgbotapi "gopkg.in/telegram-bot-api.v4"
 )
 
@@ -234,6 +235,23 @@ func (h *Handler) Delete(ud tgbotapi.Update, tokens []string, cmd string) {
 			continue
 		}
 
+		// remove from tracked IDs so completion notifications won't be re-sent
+		if tracked, terr := utils.LoadTracked("telegram/completed.json"); terr == nil {
+			newTracked := make([]int, 0, len(tracked))
+			for _, id := range tracked {
+				if id != num {
+					newTracked = append(newTracked, id)
+				}
+			}
+			if len(newTracked) != len(tracked) {
+				if serr := utils.SaveTracked("telegram/completed.json", newTracked); serr != nil {
+					h.Logger.Printf("[WARNING] failed to update telegram/completed.json: %v", serr)
+				}
+			}
+		} else {
+			h.Logger.Printf("[DEBUG] failed to load telegram/completed.json: %v", terr)
+		}
+
 		msg := h.FormatOutputString(cmd, name)
 		h.SendWithFormat(ud.Message.Chat.ID, msg, cmd)
 	}
@@ -258,6 +276,23 @@ func (h *Handler) DeleteData(ud tgbotapi.Update, tokens []string, cmd string) {
 		if err != nil {
 			h.SendWithFormat(ud.Message.Chat.ID, "*deldata:* "+err.Error(), cmd)
 			continue
+		}
+
+		// remove from tracked IDs so completion notifications won't be re-sent
+		if tracked, terr := utils.LoadTracked("telegram/completed.json"); terr == nil {
+			newTracked := make([]int, 0, len(tracked))
+			for _, id := range tracked {
+				if id != num {
+					newTracked = append(newTracked, id)
+				}
+			}
+			if len(newTracked) != len(tracked) {
+				if serr := utils.SaveTracked("telegram/completed.json", newTracked); serr != nil {
+					h.Logger.Printf("[WARNING] failed to update telegram/completed.json: %v", serr)
+				}
+			}
+		} else {
+			h.Logger.Printf("[DEBUG] failed to load telegram/completed.json: %v", terr)
 		}
 
 		msg := h.FormatOutputString(cmd, name)

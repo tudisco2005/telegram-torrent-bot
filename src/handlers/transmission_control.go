@@ -217,21 +217,20 @@ func (h *Handler) Check(ud tgbotapi.Update, tokens []string, cmd string) {
 func (h *Handler) Delete(ud tgbotapi.Update, tokens []string, cmd string) {
 	// make sure that we got an argument
 	if len(tokens) == 0 {
-		h.SendWithFormat(ud.Message.Chat.ID, "*del:* needs an ID", cmd)
+		h.SendWithFormat(ud.Message.Chat.ID, "*deldata:* needs an ID", cmd)
 		return
 	}
-
 	// loop over tokens to read each potential id
 	for _, id := range tokens {
 		num, err := strconv.Atoi(id)
 		if err != nil {
-			h.SendWithFormat(ud.Message.Chat.ID, "*del:* "+err.Error(), cmd)
+			h.SendWithFormat(ud.Message.Chat.ID, "*deldata:* "+err.Error(), cmd)
 			continue
 		}
 
 		name, err := h.Client.DeleteTorrent(num, false)
 		if err != nil {
-			h.SendWithFormat(ud.Message.Chat.ID, "*del:* "+err.Error(), cmd)
+			h.SendWithFormat(ud.Message.Chat.ID, "*deldata:* "+err.Error(), cmd)
 			continue
 		}
 

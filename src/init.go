@@ -42,6 +42,7 @@ func InitFlags(cfg *AppConfig) error {
 		LogFile:                 &cfg.LogFile,
 		DefaultTorrentLocation:  &cfg.DefaultTorrentLocation,
 		DefaultDownloadLocation: &cfg.DefaultDownloadLocation,
+		DefaultMoveLocation:     &cfg.DefaultMoveLocation,
 		NoLive:                  &cfg.NoLive,
 		Verbose:                 &cfg.Verbose,
 		UpdateMaxIterations:     &cfg.UpdateMaxIterations,

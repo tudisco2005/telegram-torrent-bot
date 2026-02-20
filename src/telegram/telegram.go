@@ -92,6 +92,7 @@ type BotConfig struct {
 	ChatID                  int64
 	DefaultTorrentLocation  string // directory where received .torrent files are saved before adding to Transmission
 	DefaultDownloadLocation string // directory where downloaded files are stored
+	DefaultMoveLocation     string // directory where completed downloads should be copied/moved to
 	VERSION                 string
 	Verbose                 bool
 }
@@ -118,7 +119,23 @@ func (s *SimpleMessageSender) Send(text string, chatID int64, markdown bool) int
 		s.Logger.Printf("[DEBUG] Sending message to ChatID=%d, Markdown=%v, Length=%d, Preview=%q",
 			chatID, markdown, len(text), textPreview)
 	}
-	return sendMessage(s.Bot, text, chatID, markdown)
+	msg := tgbotapi.NewMessage(chatID, text)
+	msg.DisableWebPagePreview = true
+	if markdown {
+		msg.ParseMode = tgbotapi.ModeMarkdown
+	}
+
+	resp, err := s.Bot.Send(msg)
+	if err != nil {
+		s.Logger.Printf("[ERROR] Failed to send message to ChatID=%d, Markdown=%v, Length=%d Err=%v", chatID, markdown, len(text), err)
+		return 0
+	}
+
+	if s.Verbose {
+		s.Logger.Printf("[DEBUG] Message sent: ChatID=%d RespMessageID=%d", chatID, resp.MessageID)
+	}
+
+	return resp.MessageID
 }
 
 // sendMessage helper function
@@ -171,6 +188,7 @@ func Start(cfg *BotConfig) {
 		BotToken:                cfg.Bot.Token,
 		DefaultTorrentLocation:  cfg.DefaultTorrentLocation,
 		DefaultDownloadLocation: cfg.DefaultDownloadLocation,
+		DefaultMoveLocation:     cfg.DefaultMoveLocation,
 		NoLive:                  cfg.NoLive,
 		Interval:                cfg.Interval * time.Second,
 		StartTime:               time.Now(),
@@ -261,12 +279,19 @@ func Start(cfg *BotConfig) {
 			continue
 		}
 
-		// Update or add this chat ID in chat.json (refresh timestamp or append)
-		if added, err := utils.AddOrUpdateChatID("telegram/chat.json", update.Message.Chat.ID); err != nil {
-			cfg.Logger.Printf("[WARNING] Failed to add/update chat ID %d: %v", update.Message.Chat.ID, err)
+		// Only update/add this chat ID if the sender is a configured master
+		if cfg.Masters.Contains(update.Message.From.UserName) {
+			// Update or add this chat ID in chat.json (refresh timestamp or append)
+			if added, err := utils.AddOrUpdateChatID("telegram/chat.json", update.Message.Chat.ID); err != nil {
+				cfg.Logger.Printf("[WARNING] Failed to add/update chat ID %d: %v", update.Message.Chat.ID, err)
+			} else {
+				if added && cfg.Verbose {
+					cfg.Logger.Printf("[DEBUG] Added new chat ID %d to telegram/chat.json", update.Message.Chat.ID)
+				}
+			}
 		} else {
-			if added && cfg.Verbose {
-				cfg.Logger.Printf("[DEBUG] Added new chat ID %d to telegram/chat.json", update.Message.Chat.ID)
+			if cfg.Verbose {
+				cfg.Logger.Printf("[DEBUG] Not adding chat ID %d: user %s is not a master", update.Message.Chat.ID, update.Message.From.UserName)
 			}
 		}
 
@@ -426,34 +451,35 @@ func buildCommandMap(cmds *Commands) map[string]CommandHandler {
 
 	// Map command names to their handler functions; handlers receive canonical command name for output_format
 	handlerMap := map[string]CommandHandler{
-		"plist":       func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.Plist(u, a, c) },
-		"list":        func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.List(u, a, c) },
-		"head":        func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.Head(u, a, c) },
-		"tail":        func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.Tail(u, a, c) },
-		"downs":       func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.Downs(u, c) },
-		"seeding":     func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.Seeding(u, c) },
-		"paused":      func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.Paused(u, c) },
-		"checking":    func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.Checking(u, c) },
-		"active":      func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.Active(u, c) },
-		"errors":      func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.Errors(u, c) },
-		"sort":        func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.Sort(u, a, c) },
-		"trackers":    func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.Trackers(u, c) },
-		"add":         func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.Add(u, a, c) },
-		"search":      func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.Search(u, a, c) },
-		"latest":      func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.Latest(u, a, c) },
-		"info":        func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.Info(u, a, c) },
-		"stop":        func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.Stop(u, a, c) },
-		"start":       func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.Start(u, a, c) },
-		"check":       func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.Check(u, a, c) },
-		"del":         func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.Delete(u, a, c) },
-		"deldata":     func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.DeleteData(u, a, c) },
-		"stats":       func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.Stats(u, c) },
-		"uptime":      func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.Uptime(u, c) },
-		"downlimit":   func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.DownloadLimit(u, a, c) },
-		"uplimit":     func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.UploadLimit(u, a, c) },
-		"speed":       func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.Speed(u, c) },
-		"count":       func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.Count(u, c) },
-		"diskusage":   func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.DiskUsage(u, c) },
+		"plist":     func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.Plist(u, a, c) },
+		"list":      func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.List(u, a, c) },
+		"head":      func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.Head(u, a, c) },
+		"tail":      func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.Tail(u, a, c) },
+		"downs":     func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.Downs(u, c) },
+		"seeding":   func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.Seeding(u, c) },
+		"paused":    func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.Paused(u, c) },
+		"checking":  func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.Checking(u, c) },
+		"active":    func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.Active(u, c) },
+		"errors":    func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.Errors(u, c) },
+		"sort":      func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.Sort(u, a, c) },
+		"trackers":  func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.Trackers(u, c) },
+		"add":       func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.Add(u, a, c) },
+		"search":    func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.Search(u, a, c) },
+		"latest":    func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.Latest(u, a, c) },
+		"info":      func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.Info(u, a, c) },
+		"stop":      func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.Stop(u, a, c) },
+		"start":     func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.Start(u, a, c) },
+		"check":     func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.Check(u, a, c) },
+		"del":       func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.Delete(u, a, c) },
+		"deldata":   func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.DeleteData(u, a, c) },
+		"stats":     func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.Stats(u, c) },
+		"uptime":    func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.Uptime(u, c) },
+		"downlimit": func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.DownloadLimit(u, a, c) },
+		"uplimit":   func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.UploadLimit(u, a, c) },
+		"speed":     func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.Speed(u, c) },
+		"count":     func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.Count(u, c) },
+		"diskusage": func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.DiskUsage(u, c) },
+		"move":      func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.Move(u, a, c) },
 		// Note: "version" and "help" are handled separately in dispatchCommand
 	}
 

@@ -1,6 +1,9 @@
 package handlers
 
 import (
+	"fmt"
+	"os"
+	"strconv"
 	"syscall"
 
 	"github.com/dustin/go-humanize"
@@ -9,19 +12,18 @@ import (
 
 // DiskFree reports used disk space for the default download location
 func (h *Handler) DiskUsage(ud tgbotapi.Update, cmd string) {
-	// Choose target path: prefer DefaultDownloadLocation, fallback to root
-	path := h.DefaultDownloadLocation
-	if path == "" {
-		path = "/"
+	// Download location stats
+	dlPath := h.DefaultDownloadLocation
+	if dlPath == "" {
+		dlPath = "/"
 	}
 
 	var stat syscall.Statfs_t
-	if err := syscall.Statfs(path, &stat); err != nil {
+	if err := syscall.Statfs(dlPath, &stat); err != nil {
 		h.SendWithFormat(ud.Message.Chat.ID, "*diskusage:* "+err.Error(), cmd)
 		return
 	}
 
-	// Available blocks * size per block = available bytes
 	avail := uint64(stat.Bavail) * uint64(stat.Bsize)
 	total := uint64(stat.Blocks) * uint64(stat.Bsize)
 	used := total - avail
@@ -31,10 +33,31 @@ func (h *Handler) DiskUsage(ud tgbotapi.Update, cmd string) {
 	} else {
 		pct = 0
 	}
+	dlUsed := humanize.Bytes(used)
+	dlTotal := humanize.Bytes(total)
 
-	usedStr := humanize.Bytes(used)
-	totalStr := humanize.Bytes(total)
-	// The FormatOutputString expects command -> format template; use that (used, total, pct)
-	out := h.FormatOutputString(cmd, usedStr, totalStr, pct)
+	// Move location stats
+	mvPath := h.DefaultMoveLocation
+	if mvPath == "" {
+		mvPath = os.Getenv("DEFAULT_MOVE_LOCATION")
+	}
+	mvStatus := "not configured"
+	if mvPath != "" {
+		var mstat syscall.Statfs_t
+		if err := syscall.Statfs(mvPath, &mstat); err == nil {
+			mavail := uint64(mstat.Bavail) * uint64(mstat.Bsize)
+			mtotal := uint64(mstat.Blocks) * uint64(mstat.Bsize)
+			mused := mtotal - mavail
+			mpct := 0
+			if mtotal > 0 {
+				mpct = int((mused * 100) / mtotal)
+			}
+			mvStatus = humanize.Bytes(mused) + " / " + humanize.Bytes(mtotal) + " (" + strconv.Itoa(mpct) + "% )"
+		} else {
+			mvStatus = "error: " + err.Error()
+		}
+	}
+
+	out := fmt.Sprintf("Download `%s`: %s / %s (%d%%)\nMove `%s`: %s", dlPath, dlUsed, dlTotal, pct, mvPath, mvStatus)
 	h.SendWithFormat(ud.Message.Chat.ID, out, cmd)
 }

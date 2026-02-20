@@ -7,7 +7,7 @@ this project is based on the original (transmission-telegram)[https://github.com
 - code divided in separeted files for better further developing
 
 new feature:
-- move.sh: after a torrent is completed is moved to a ./data/copleted folder inside the bot folder and make a link so we can continue seeding, when /deldata only the link file is deleted
+- move command that copy all files to a specific location on disk
 - save .torrent files in ./data/torrents folder inside the bot folder
 - verbose logging of events
 - startup message send to all user not older than a week(default)

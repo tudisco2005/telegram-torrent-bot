@@ -20,16 +20,18 @@ type Handler struct {
 	DefaultTorrentLocation  string // directory where received .torrent files are saved before adding to Transmission
 	DefaultDownloadLocation string // directory where downloaded files are stored
 	NoLive                  bool
-	Interval                time.Duration
-	Duration                int
-	StartTime               time.Time
-	UpdateMaxIterations     int // max live-update iterations per message (0 = disable live updates)
-	Replacer                StringReplacer
-	SendMessage             MessageSender
-	Logger                  Logger
-	OutputFormatByCommand   map[string]string // canonical command name -> "markdown" or "plain"
-	OutputStringByCommand   map[string]string // canonical command name -> format string for output
-	ListOutputByCommand     map[string]bool   // when true, output_string is used to format each line of list output
+	DefaultMoveLocation     string // directory where completed downloads should be copied/moved to
+
+	Interval              time.Duration
+	Duration              int
+	StartTime             time.Time
+	UpdateMaxIterations   int // max live-update iterations per message (0 = disable live updates)
+	Replacer              StringReplacer
+	SendMessage           MessageSender
+	Logger                Logger
+	OutputFormatByCommand map[string]string // canonical command name -> "markdown" or "plain"
+	OutputStringByCommand map[string]string // canonical command name -> format string for output
+	ListOutputByCommand   map[string]bool   // when true, output_string is used to format each line of list output
 }
 
 // FormatOutputString formats a string using output_string from commands.json if available, otherwise uses "(RAW) %s".

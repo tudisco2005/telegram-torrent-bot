@@ -19,3 +19,14 @@ var TrackerRegex = regexp.MustCompile(`[https?|udp]://([^:/]*)`)
 func EscapeMarkdown(text string) string {
 	return MarkdownReplacer.Replace(text)
 }
+
+func EscapeFileMD(name string) string {
+	// escape markdown special characters in filename
+	replacer := strings.NewReplacer(
+		"_", "\\_",
+		"*", "\\*",
+		"`", "\\`",
+		"[", "\\[",
+	)
+	return replacer.Replace(name)
+}

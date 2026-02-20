@@ -226,7 +226,7 @@
       "aliases": [
         "rm"
       ],
-      "description": "Delete torrents",
+      "description": "Delete only torrents",
       "example": "/del <id1> <id2>",
       "output_format": "markdown",
       "list_output": false,
@@ -236,11 +236,21 @@
       "name": "deldata",
       "command_category": "management",
       "aliases": [],
-      "description": "Delete torrents and their link to data",
+      "description": "Delete torrents and data",
       "example": "/deldata <id1> <id2>",
       "output_format": "markdown",
       "list_output": false,
       "output_string": "*Deleted:* %s"
+    },
+    {
+      "name": "move",
+      "command_category": "management",
+      "aliases": [],
+      "description": "Copy completed downloads to `DEFAULT_MOVE_LOCATION`",
+      "example": "/move",
+      "output_format": "markdown",
+      "list_output": false,
+      "output_string": "*move:* %s"
     },
     {
       "name": "stats",

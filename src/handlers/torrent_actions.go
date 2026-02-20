@@ -2,17 +2,22 @@ package handlers
 
 import (
 	"bytes"
+	"crypto/sha1"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"syscall"
 	"time"
 
+	"github.com/tudisco2005/telegram-torrent-bot/utils"
 	"github.com/dustin/go-humanize"
 	"github.com/pyed/transmission"
 	tgbotapi "gopkg.in/telegram-bot-api.v4"
@@ -491,3 +496,372 @@ func (h *Handler) Info(ud tgbotapi.Update, tokens []string, cmd string) {
 		}(torrentID, msgID, chatID)
 	}
 }
+
+// Move copies completed downloads from the Transmission download directory
+// (DefaultDownloadLocation / TRANSMISSION_DONWNLOAD_LOCATION) to DEFAULT_MOVE_LOCATION
+func (h *Handler) Move(ud tgbotapi.Update, tokens []string, cmd string) {
+	// determine source and destination directories
+	src := h.DefaultDownloadLocation
+	if src == "" {
+		src = os.Getenv("TRANSMISSION_DONWNLOAD_LOCATION")
+	}
+	dst := h.DefaultMoveLocation
+	if dst == "" {
+		dst = os.Getenv("DEFAULT_MOVE_LOCATION")
+	}
+
+	if src == "" || dst == "" {
+		h.SendWithFormat(ud.Message.Chat.ID, "move: source or destination not configured", cmd)
+		return
+	}
+
+	// ensure destination exists
+	if err := os.MkdirAll(dst, 0755); err != nil {
+		h.SendWithFormat(ud.Message.Chat.ID, "move: failed to create destination: "+err.Error(), cmd)
+		return
+	}
+
+	// path to moved.json inside destination
+	movedFile := filepath.Join(dst, "../moved.json")
+
+	// load moved records (map[name] -> map[string]string)
+	moved := make(map[string]map[string]string)
+	if data, err := os.ReadFile(movedFile); err == nil {
+		_ = json.Unmarshal(data, &moved)
+	}
+
+	// support clearing/resetting the moved.json via `move reset` or `move clear`
+	if len(tokens) > 0 {
+		tk := strings.ToLower(tokens[0])
+		if tk == "reset" || tk == "clear" {
+			moved = make(map[string]map[string]string)
+			if b, err := json.MarshalIndent(moved, "", "  "); err == nil {
+				if werr := os.WriteFile(movedFile, b, 0644); werr != nil {
+					h.SendWithFormat(ud.Message.Chat.ID, "move: failed to clear moved.json: "+werr.Error(), cmd)
+				} else {
+					h.SendWithFormat(ud.Message.Chat.ID, "move: moved.json cleared", cmd)
+				}
+			} else {
+				h.SendWithFormat(ud.Message.Chat.ID, "move: failed to reset moved.json: "+err.Error(), cmd)
+			}
+			h.Logger.Printf("[DEBUG] Move: moved.json reset/cleared by user command")
+			return
+		}
+	}
+
+	// list entries in source
+	entries, err := os.ReadDir(src)
+	if err != nil {
+		h.SendWithFormat(ud.Message.Chat.ID, "*move:* failed to read source directory: "+err.Error(), cmd)
+		return
+	}
+
+	// If no token provided, list all torrents and their move status
+	if len(tokens) == 0 {
+		// quick ack so user sees a response immediately
+		h.SendWithFormat(ud.Message.Chat.ID, "Processing move: listing downloads...", cmd)
+		torrents, terr := h.Client.GetTorrents()
+		if terr != nil {
+			h.SendWithFormat(ud.Message.Chat.ID, "*move:* failed to get torrents: "+terr.Error(), cmd)
+			return
+		}
+		var lines []string
+		for _, t := range torrents {
+			name := t.Name
+			status := "❌"
+			// check if source entry exists
+			if _, err := os.Stat(filepath.Join(src, name)); err == nil {
+				if rec, ok := moved[name]; ok {
+					if _, ok2 := rec["moved_at"]; ok2 {
+						status = "✅"
+					} else {
+						status = "✅"
+					}
+				} else {
+					status = "💾"
+				}
+			} else {
+				// no source file; mark as error/absent
+				status = "❓"
+			}
+			lines = append(lines, fmt.Sprintf("%s `<%d>` %s", status, t.ID, utils.EscapeFileMD(name)))
+		}
+		if len(lines) == 0 {
+			h.SendWithFormat(ud.Message.Chat.ID, "move: no torrents found", cmd)
+			return
+		}
+		cont := strings.Join(lines, "\n")
+		fmt.Printf("%s\n", cont)
+		h.SendWithFormat(ud.Message.Chat.ID, cont, cmd)
+		return
+	}
+
+	// Build fingerprint map for destination entries to detect duplicates by content hash
+	dstHashes := make(map[string]string) // hash -> dst entry name
+	dstEntries, derr := os.ReadDir(dst)
+	if derr == nil {
+		for _, dent := range dstEntries {
+			dname := dent.Name()
+			if strings.HasPrefix(dname, ".") || strings.Contains(dname, ".part") || strings.HasSuffix(dname, ".crdownload") || dname == "moved.json" {
+				continue
+			}
+			dpath := filepath.Join(dst, dname)
+			if hsh, err := computePathHash(dpath); err == nil {
+				dstHashes[hsh] = dname
+			} else {
+				h.Logger.Printf("[DEBUG] Move: failed to hash destination %s: %v", dpath, err)
+			}
+		}
+	}
+	h.Logger.Printf("[DEBUG] Move: computed destination hashes for %d entries", len(dstHashes))
+
+	var toProcess []string // names to process
+	// If token is "all", move all not-yet-moved entries
+	if len(tokens) > 0 && strings.ToLower(tokens[0]) == "all" {
+		for _, ent := range entries {
+			name := ent.Name()
+			if strings.HasPrefix(name, ".") || strings.Contains(name, ".part") || strings.HasSuffix(name, ".crdownload") {
+				continue
+			}
+			if _, ok := moved[name]; ok {
+				continue
+			}
+			toProcess = append(toProcess, name)
+		}
+		h.Logger.Printf("[DEBUG] Move: token 'all' detected, %d entries to process", len(toProcess))
+	} else if len(tokens) > 0 {
+		// treat tokens as torrent IDs; map id -> torrent name and add to toProcess if exists in source
+		for _, tk := range tokens {
+			id, err := strconv.Atoi(tk)
+			if err != nil {
+				// not a number, maybe a direct filename
+				toProcess = append(toProcess, tk)
+				continue
+			}
+			t, terr := h.Client.GetTorrent(id)
+			if terr != nil {
+				h.SendWithFormat(ud.Message.Chat.ID, fmt.Sprintf("*move:* failed to lookup torrent id %d: %v", id, terr), cmd)
+				continue
+			}
+			// find matching entry in source by name
+			found := false
+			for _, ent := range entries {
+				if ent.Name() == t.Name {
+					toProcess = append(toProcess, ent.Name())
+					found = true
+					break
+				}
+			}
+			if !found {
+				h.SendWithFormat(ud.Message.Chat.ID, fmt.Sprintf("*move:* source entry for torrent id %d (%s) not found", id, t.Name), cmd)
+			}
+		}
+	} else {
+		// default: same as "all"
+		for _, ent := range entries {
+			name := ent.Name()
+			if strings.HasPrefix(name, ".") || strings.Contains(name, ".part") || strings.HasSuffix(name, ".crdownload") {
+				continue
+			}
+			if _, ok := moved[name]; ok {
+				continue
+			}
+			toProcess = append(toProcess, name)
+		}
+	}
+
+	var copied []string
+	var errorsList []string
+
+	for _, name := range toProcess {
+		sPath := filepath.Join(src, name)
+		dPath := filepath.Join(dst, name)
+
+		// compute hash of source entry and check for a matching hash in destination
+		sHash, err := computePathHash(sPath)
+		if err != nil {
+			errorsList = append(errorsList, fmt.Sprintf("%s: failed to compute hash: %v", name, err))
+			continue
+		}
+		if existing, ok := dstHashes[sHash]; ok {
+			h.Logger.Printf("[INFO] Move: skipping %s - duplicate of destination %s (hash)", sPath, existing)
+			// record as skipped
+			errorsList = append(errorsList, fmt.Sprintf("%s: duplicate of %s (skipped)", name, existing))
+			// mark as moved in moved.json to avoid future attempts
+			moved[name] = map[string]string{"moved_at": time.Now().Format(time.RFC3339), "dest": existing, "hash": sHash}
+			continue
+		}
+
+		if err := copyPath(sPath, dPath); err != nil {
+			errorsList = append(errorsList, fmt.Sprintf("%s: %v", name, err))
+			continue
+		}
+		// record as moved
+		moved[name] = map[string]string{"moved_at": time.Now().Format(time.RFC3339), "dest": dPath, "hash": sHash}
+		copied = append(copied, name)
+	}
+
+	// save moved.json
+	if b, err := json.MarshalIndent(moved, "", "  "); err == nil {
+		_ = os.WriteFile(movedFile, b, 0644)
+	} else {
+		h.Logger.Printf("[WARNING] Move: failed to save moved.json: %v", err)
+	}
+
+	if len(copied) == 0 {
+		if len(errorsList) > 0 {
+			h.SendWithFormat(ud.Message.Chat.ID, "move: errors: "+strings.Join(errorsList, "; "), cmd)
+			return
+		}
+		h.SendWithFormat(ud.Message.Chat.ID, "move: no completed downloads found to copy", cmd)
+		return
+	}
+
+	msg := fmt.Sprintf("move: copied %d item(s) to %s\n- %s", len(copied), dst, strings.Join(copied, "\n- "))
+	if len(errorsList) > 0 {
+		msg = msg + "\nErrors: " + strings.Join(errorsList, "; ")
+	}
+	h.SendWithFormat(ud.Message.Chat.ID, msg, cmd)
+}
+
+// copyPath copies a file or directory recursively from src to dst
+func copyPath(src, dst string) error {
+	info, err := os.Stat(src)
+	if err != nil {
+		return err
+	}
+	if info.IsDir() {
+		return filepath.Walk(src, func(path string, fi os.FileInfo, err error) error {
+			if err != nil {
+				return err
+			}
+			rel, err := filepath.Rel(src, path)
+			if err != nil {
+				return err
+			}
+			target := filepath.Join(dst, rel)
+			if fi.IsDir() {
+				return os.MkdirAll(target, fi.Mode())
+			}
+			// copy file
+			if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
+				return err
+			}
+			in, err := os.Open(path)
+			if err != nil {
+				return err
+			}
+			defer in.Close()
+			out, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, fi.Mode())
+			if err != nil {
+				return err
+			}
+			if _, err := io.Copy(out, in); err != nil {
+				out.Close()
+				return err
+			}
+			return out.Close()
+		})
+	}
+	// single file
+	if err := os.MkdirAll(filepath.Dir(dst), 0755); err != nil {
+		return err
+	}
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, info.Mode())
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(out, in); err != nil {
+		out.Close()
+		return err
+	}
+	return out.Close()
+}
+
+// computePathHash computes a deterministic SHA1 fingerprint for a file or directory.
+// For files, it hashes the filename, size and contents. For directories it walks
+// files in sorted order and hashes each file's relative path, size and contents.
+func computePathHash(path string) (string, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return "", err
+	}
+	h := sha1.New()
+
+	if !info.IsDir() {
+		// single file: include base name and size
+		rel := filepath.Base(path)
+		if _, err := h.Write([]byte(rel)); err != nil {
+			return "", err
+		}
+		if _, err := h.Write([]byte("\n")); err != nil {
+			return "", err
+		}
+		if _, err := h.Write([]byte(fmt.Sprintf("%d\n", info.Size()))); err != nil {
+			return "", err
+		}
+		f, err := os.Open(path)
+		if err != nil {
+			return "", err
+		}
+		defer f.Close()
+		if _, err := io.Copy(h, f); err != nil {
+			return "", err
+		}
+		return hex.EncodeToString(h.Sum(nil)), nil
+	}
+
+	// directory: collect files (not directories) in deterministic order
+	var files []string
+	err = filepath.Walk(path, func(p string, fi os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if fi.IsDir() {
+			return nil
+		}
+		rel, err := filepath.Rel(path, p)
+		if err != nil {
+			return err
+		}
+		files = append(files, rel)
+		return nil
+	})
+	if err != nil {
+		return "", err
+	}
+	sort.Strings(files)
+
+	for _, rel := range files {
+		p := filepath.Join(path, rel)
+		fi, err := os.Stat(p)
+		if err != nil {
+			return "", err
+		}
+		if _, err := h.Write([]byte(rel)); err != nil {
+			return "", err
+		}
+		if _, err := h.Write([]byte("\n")); err != nil {
+			return "", err
+		}
+		if _, err := h.Write([]byte(fmt.Sprintf("%d\n", fi.Size()))); err != nil {
+			return "", err
+		}
+		f, err := os.Open(p)
+		if err != nil {
+			return "", err
+		}
+		if _, err := io.Copy(h, f); err != nil {
+			f.Close()
+			return "", err
+		}
+		f.Close()
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
+}
+

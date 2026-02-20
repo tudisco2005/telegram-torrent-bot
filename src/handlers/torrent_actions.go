@@ -158,7 +158,7 @@ func (h *Handler) Add(ud tgbotapi.Update, tokens []string, cmd string) {
 	if buf.Len() > 0 {
 		// Trim trailing newline
 		out := strings.TrimRight(buf.String(), "\n")
-		h.SendWithFormat(ud.Message.Chat.ID, out, cmd)
+		h.SendWithFormat(ud.Message.Chat.ID, utils.EscapeFileMD(out), cmd)
 	}
 }
 
@@ -321,7 +321,7 @@ func (h *Handler) ReceiveTorrent(ud tgbotapi.Update) {
 	}
 
 	msg := h.FormatOutputString("add", added.Name)
-	h.SendWithFormat(ud.Message.Chat.ID, msg, "add")
+	h.SendWithFormat(ud.Message.Chat.ID, utils.EscapeFileMD(msg), "add")
 }
 
 // Search searches for torrents by name

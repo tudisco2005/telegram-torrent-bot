@@ -32,6 +32,7 @@ type Handler struct {
 	OutputFormatByCommand map[string]string // canonical command name -> "markdown" or "plain"
 	OutputStringByCommand map[string]string // canonical command name -> format string for output
 	ListOutputByCommand   map[string]bool   // when true, output_string is used to format each line of list output
+	CompletedFilePath     string
 }
 
 // FormatOutputString formats a string using output_string from commands.json if available, otherwise uses "(RAW) %s".

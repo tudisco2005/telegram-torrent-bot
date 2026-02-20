@@ -183,6 +183,16 @@ func Start(cfg *BotConfig) {
 	}
 
 	// Create handler
+	// Resolve completed.json path (try several common locations relative to cwd)
+	completedPath := "telegram/completed.json"
+	candidates := []string{"telegram/completed.json", "src/telegram/completed.json", "../telegram/completed.json", "./telegram/completed.json"}
+	for _, p := range candidates {
+		if _, err := os.Stat(p); err == nil {
+			completedPath = p
+			break
+		}
+	}
+
 	h := &handlers.Handler{
 		Bot:                     cfg.Bot,
 		Client:                  cfg.Client,
@@ -201,6 +211,7 @@ func Start(cfg *BotConfig) {
 		OutputFormatByCommand:   outputFormatByCommand,
 		OutputStringByCommand:   outputStringByCommand,
 		ListOutputByCommand:     listOutputByCommand,
+		CompletedFilePath:       completedPath,
 	}
 
 	cfg.Logger.Printf("[DEBUG] Bot started with version %s", cfg.VERSION)
@@ -254,7 +265,7 @@ func Start(cfg *BotConfig) {
 		pollInterval := 30 * time.Second
 
 		// load persisted tracked IDs from disk (avoid re-notifying after restart)
-		trackedSlice, err := utils.LoadTracked("telegram/completed.json")
+		trackedSlice, err := utils.LoadTracked(completedPath)
 		if err != nil {
 			cfg.Logger.Printf("[DEBUG] completion poll: failed to load tracked IDs: %v", err)
 			trackedSlice = []int{}
@@ -265,7 +276,6 @@ func Start(cfg *BotConfig) {
 		}
 
 		for {
-			time.Sleep(pollInterval)
 			// fetch current torrents
 			torrents, err := cfg.Client.GetTorrents()
 			if err != nil {
@@ -281,13 +291,13 @@ func Start(cfg *BotConfig) {
 			chatIDs := utils.GetIDs(chatObjs)
 
 			changed := false
+			// collect newly completed torrents in this iteration and send a grouped message
+			newLines := make([]string, 0)
 			for _, t := range torrents {
 				// consider a torrent complete when PercentDone >= 1.0
 				if t.PercentDone >= 1.0 && !notified[t.ID] {
-					msg := fmt.Sprintf("*Download complete!* %s\nID: %d", t.Name, t.ID)
-					for _, cid := range chatIDs {
-						cfg.SendMessage.Send(msg, cid, true)
-					}
+					line := fmt.Sprintf("`<%d>` %s", t.ID, utils.EscapeFileMD(t.Name))
+					newLines = append(newLines, line)
 					notified[t.ID] = true
 					changed = true
 				}
@@ -300,6 +310,13 @@ func Start(cfg *BotConfig) {
 				}
 			}
 
+			if len(newLines) > 0 {
+				msg := "Downloads complete:\n" + strings.Join(newLines, "\n")
+				for _, cid := range chatIDs {
+					cfg.SendMessage.Send(msg, cid, true)
+				}
+			}
+
 			if changed {
 				// persist current notified IDs
 				ids := make([]int, 0, len(notified))
@@ -307,10 +324,11 @@ func Start(cfg *BotConfig) {
 					ids = append(ids, id)
 				}
 				sort.Ints(ids)
-				if err := utils.SaveTracked("telegram/completed.json", ids); err != nil {
+				if err := utils.SaveTracked(completedPath, ids); err != nil {
 					cfg.Logger.Printf("[DEBUG] completion poll: failed to save tracked IDs: %v", err)
 				}
 			}
+			time.Sleep(pollInterval)
 		}
 	}()
 

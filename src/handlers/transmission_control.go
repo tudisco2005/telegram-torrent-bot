@@ -236,7 +236,7 @@ func (h *Handler) Delete(ud tgbotapi.Update, tokens []string, cmd string) {
 		}
 
 		// remove from tracked IDs so completion notifications won't be re-sent
-		if tracked, terr := utils.LoadTracked("telegram/completed.json"); terr == nil {
+		if tracked, terr := utils.LoadTracked(h.CompletedFilePath); terr == nil {
 			newTracked := make([]int, 0, len(tracked))
 			for _, id := range tracked {
 				if id != num {
@@ -244,8 +244,8 @@ func (h *Handler) Delete(ud tgbotapi.Update, tokens []string, cmd string) {
 				}
 			}
 			if len(newTracked) != len(tracked) {
-				if serr := utils.SaveTracked("telegram/completed.json", newTracked); serr != nil {
-					h.Logger.Printf("[WARNING] failed to update telegram/completed.json: %v", serr)
+				if serr := utils.SaveTracked(h.CompletedFilePath, newTracked); serr != nil {
+					h.Logger.Printf("[WARNING] failed to update %s: %v", h.CompletedFilePath, serr)
 				}
 			}
 		} else {
@@ -279,7 +279,7 @@ func (h *Handler) DeleteData(ud tgbotapi.Update, tokens []string, cmd string) {
 		}
 
 		// remove from tracked IDs so completion notifications won't be re-sent
-		if tracked, terr := utils.LoadTracked("telegram/completed.json"); terr == nil {
+		if tracked, terr := utils.LoadTracked(h.CompletedFilePath); terr == nil {
 			newTracked := make([]int, 0, len(tracked))
 			for _, id := range tracked {
 				if id != num {
@@ -287,8 +287,8 @@ func (h *Handler) DeleteData(ud tgbotapi.Update, tokens []string, cmd string) {
 				}
 			}
 			if len(newTracked) != len(tracked) {
-				if serr := utils.SaveTracked("telegram/completed.json", newTracked); serr != nil {
-					h.Logger.Printf("[WARNING] failed to update telegram/completed.json: %v", serr)
+				if serr := utils.SaveTracked(h.CompletedFilePath, newTracked); serr != nil {
+					h.Logger.Printf("[WARNING] failed to update %s: %v", h.CompletedFilePath, serr)
 				}
 			}
 		} else {
@@ -296,7 +296,7 @@ func (h *Handler) DeleteData(ud tgbotapi.Update, tokens []string, cmd string) {
 		}
 
 		msg := h.FormatOutputString(cmd, name)
-		h.SendWithFormat(ud.Message.Chat.ID, msg, cmd)
+		h.SendWithFormat(ud.Message.Chat.ID, utils.EscapeFileMD(msg), cmd)
 	}
 }
 

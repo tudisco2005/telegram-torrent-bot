@@ -1,6 +1,7 @@
 package telegram
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/pyed/transmission"
+	"github.com/tudisco2005/telegram-torrent-bot/commands"
 	"github.com/tudisco2005/telegram-torrent-bot/config"
 	"github.com/tudisco2005/telegram-torrent-bot/handlers"
 	"github.com/tudisco2005/telegram-torrent-bot/utils"
@@ -44,6 +46,18 @@ type Category struct {
 // Categories holds all category definitions
 type Categories struct {
 	Categories []Category `json:"categories"`
+}
+
+func resolveExistingPath(candidates ...string) string {
+	for _, p := range candidates {
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
+	}
+	if len(candidates) > 0 {
+		return candidates[0]
+	}
+	return ""
 }
 
 // LoadCommands loads command definitions from JSON file
@@ -157,10 +171,19 @@ func sendMessage(bot *tgbotapi.BotAPI, text string, chatID int64, markdown bool)
 
 // Start begins the telegram bot event loop
 func Start(cfg *BotConfig) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	// Load commands from JSON
-	cmds, err := LoadCommands("telegram/commands.json")
+	commandsPath := resolveExistingPath(
+		"telegram/commands.json",
+		"src/telegram/commands.json",
+		"../src/telegram/commands.json",
+		"./telegram/commands.json",
+	)
+	cmds, err := LoadCommands(commandsPath)
 	if err != nil {
-		cfg.Logger.Printf("Warning: Failed to load commands from JSON: %v", err)
+		cfg.Logger.Printf("Warning: Failed to load commands from JSON (%s): %v", commandsPath, err)
 		cmds = &Commands{Commands: []Command{}} // Use empty commands list as fallback
 	}
 
@@ -171,27 +194,37 @@ func Start(cfg *BotConfig) {
 	// Build list_output map (canonical name -> use output_string per line when true)
 	listOutputByCommand := make(map[string]bool)
 	for _, cmd := range cmds.Commands {
-		format := cmd.OutputFormat
+		format := strings.ToLower(strings.TrimSpace(cmd.OutputFormat))
 		if format != "markdown" && format != "plain" {
 			format = "plain"
 		}
-		outputFormatByCommand[cmd.Name] = format
-		if cmd.OutputString != "" {
-			outputStringByCommand[cmd.Name] = cmd.OutputString
+		name := strings.ToLower(strings.TrimSpace(cmd.Name))
+		if name == "" {
+			continue
 		}
-		listOutputByCommand[cmd.Name] = cmd.ListOutput
+		outputFormatByCommand[name] = format
+		if cmd.OutputString != "" {
+			outputStringByCommand[name] = cmd.OutputString
+		}
+		listOutputByCommand[name] = cmd.ListOutput
 	}
 
 	// Create handler
 	// Resolve completed.json path (try several common locations relative to cwd)
-	completedPath := "telegram/completed.json"
-	candidates := []string{"telegram/completed.json", "src/telegram/completed.json", "../telegram/completed.json", "./telegram/completed.json"}
-	for _, p := range candidates {
-		if _, err := os.Stat(p); err == nil {
-			completedPath = p
-			break
-		}
-	}
+	completedPath := resolveExistingPath(
+		"telegram/completed.json",
+		"src/telegram/completed.json",
+		"../src/telegram/completed.json",
+		"../telegram/completed.json",
+		"./telegram/completed.json",
+	)
+	chatPath := resolveExistingPath(
+		"telegram/chat.json",
+		"src/telegram/chat.json",
+		"../src/telegram/chat.json",
+		"../telegram/chat.json",
+		"./telegram/chat.json",
+	)
 
 	h := &handlers.Handler{
 		Bot:                     cfg.Bot,
@@ -213,11 +246,12 @@ func Start(cfg *BotConfig) {
 		ListOutputByCommand:     listOutputByCommand,
 		CompletedFilePath:       completedPath,
 	}
+	cmdMap := buildCommandMap(cmds)
 
 	cfg.Logger.Printf("[DEBUG] Bot started with version %s", cfg.VERSION)
 
 	// read chat.json to get chat IDs for sending startup message (it can be an array)
-	chatObjs, err := utils.LoadChatIDs("telegram/chat.json")
+	chatObjs, err := utils.LoadChatIDs(chatPath)
 	if err != nil {
 		cfg.Logger.Printf("Warning: Failed to load chat IDs from JSON: %v", err)
 		chatObjs = []utils.ChatID{}
@@ -245,7 +279,7 @@ func Start(cfg *BotConfig) {
 			}
 		}
 		if len(pruned) != len(chatObjs) {
-			if err := utils.SaveChatIDs("telegram/chat.json", pruned); err != nil {
+			if err := utils.SaveChatIDs(chatPath, pruned); err != nil {
 				cfg.Logger.Printf("Warning: Failed to save pruned chat IDs: %v", err)
 			}
 			chatObjs = pruned
@@ -263,6 +297,8 @@ func Start(cfg *BotConfig) {
 	// Background poller: notify configured chats when a torrent completes downloading
 	go func() {
 		pollInterval := 30 * time.Second
+		ticker := time.NewTicker(pollInterval)
+		defer ticker.Stop()
 
 		// load persisted tracked IDs from disk (avoid re-notifying after restart)
 		trackedSlice, err := utils.LoadTracked(completedPath)
@@ -276,6 +312,12 @@ func Start(cfg *BotConfig) {
 		}
 
 		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+			}
+
 			// fetch current torrents
 			torrents, err := cfg.Client.GetTorrents()
 			if err != nil {
@@ -283,7 +325,7 @@ func Start(cfg *BotConfig) {
 				continue
 			}
 			// reload chat IDs so new chats receive notifications
-			chatObjs, err := utils.LoadChatIDs("telegram/chat.json")
+			chatObjs, err := utils.LoadChatIDs(chatPath)
 			if err != nil {
 				cfg.Logger.Printf("[DEBUG] completion poll: failed to load chat IDs: %v", err)
 				continue
@@ -311,7 +353,7 @@ func Start(cfg *BotConfig) {
 			}
 
 			if len(newLines) > 0 {
-				msg := "Downloads complete:\n" + strings.Join(newLines, "\n")
+				msg := "*Downloads complete:*\n" + strings.Join(newLines, "\n")
 				for _, cid := range chatIDs {
 					cfg.SendMessage.Send(msg, cid, true)
 				}
@@ -328,7 +370,6 @@ func Start(cfg *BotConfig) {
 					cfg.Logger.Printf("[DEBUG] completion poll: failed to save tracked IDs: %v", err)
 				}
 			}
-			time.Sleep(pollInterval)
 		}
 	}()
 
@@ -366,7 +407,7 @@ func Start(cfg *BotConfig) {
 		// Only update/add this chat ID if the sender is a configured master
 		if cfg.Masters.Contains(update.Message.From.UserName) {
 			// Update or add this chat ID in chat.json (refresh timestamp or append)
-			if added, err := utils.AddOrUpdateChatID("telegram/chat.json", update.Message.Chat.ID); err != nil {
+			if added, err := utils.AddOrUpdateChatID(chatPath, update.Message.Chat.ID); err != nil {
 				cfg.Logger.Printf("[WARNING] Failed to add/update chat ID %d: %v", update.Message.Chat.ID, err)
 			} else {
 				if added && cfg.Verbose {
@@ -433,7 +474,7 @@ func Start(cfg *BotConfig) {
 		}
 
 		// Dispatch command
-		dispatchCommand(h, cfg, cmds, update, command, args)
+		dispatchCommand(h, cfg, cmds, cmdMap, update, command, args)
 	}
 }
 
@@ -443,7 +484,13 @@ func generateHelpMessage(cmds *Commands) string {
 	buf.WriteString("📋 *Available Commands*\n\n")
 
 	// Load categories from JSON
-	cats, err := LoadCategories("telegram/categories.json")
+	categoriesPath := resolveExistingPath(
+		"telegram/categories.json",
+		"src/telegram/categories.json",
+		"../src/telegram/categories.json",
+		"./telegram/categories.json",
+	)
+	cats, err := LoadCategories(categoriesPath)
 	if err != nil {
 		// Fallback: return a simple help message if categories file is not found
 		buf.WriteString("_Error loading command categories. Please try again later._")
@@ -535,35 +582,35 @@ func buildCommandMap(cmds *Commands) map[string]CommandHandler {
 
 	// Map command names to their handler functions; handlers receive canonical command name for output_format
 	handlerMap := map[string]CommandHandler{
-		"plist":     func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.Plist(u, a, c) },
-		"list":      func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.List(u, a, c) },
-		"head":      func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.Head(u, a, c) },
-		"tail":      func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.Tail(u, a, c) },
-		"downs":     func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.Downs(u, c) },
-		"seeding":   func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.Seeding(u, c) },
-		"paused":    func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.Paused(u, c) },
-		"checking":  func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.Checking(u, c) },
-		"active":    func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.Active(u, c) },
-		"errors":    func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.Errors(u, c) },
-		"sort":      func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.Sort(u, a, c) },
-		"trackers":  func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.Trackers(u, c) },
-		"add":       func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.Add(u, a, c) },
-		"search":    func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.Search(u, a, c) },
-		"latest":    func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.Latest(u, a, c) },
-		"info":      func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.Info(u, a, c) },
-		"stop":      func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.Stop(u, a, c) },
-		"start":     func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.Start(u, a, c) },
-		"check":     func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.Check(u, a, c) },
-		"del":       func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.Delete(u, a, c) },
-		"deldata":   func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.DeleteData(u, a, c) },
-		"stats":     func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.Stats(u, c) },
-		"uptime":    func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.Uptime(u, c) },
-		"downlimit": func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.DownloadLimit(u, a, c) },
-		"uplimit":   func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.UploadLimit(u, a, c) },
-		"speed":     func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.Speed(u, c) },
-		"count":     func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.Count(u, c) },
-		"diskusage": func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.DiskUsage(u, c) },
-		"move":      func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { h.Move(u, a, c) },
+		"plist":     func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { commands.Plist(h, u, a, c) },
+		"list":      func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { commands.List(h, u, a, c) },
+		"head":      func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { commands.Head(h, u, a, c) },
+		"tail":      func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { commands.Tail(h, u, a, c) },
+		"downs":     func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { commands.Downs(h, u, c) },
+		"seeding":   func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { commands.Seeding(h, u, c) },
+		"paused":    func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { commands.Paused(h, u, c) },
+		"checking":  func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { commands.Checking(h, u, c) },
+		"active":    func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { commands.Active(h, u, c) },
+		"errors":    func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { commands.Errors(h, u, c) },
+		"sort":      func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { commands.Sort(h, u, a, c) },
+		"trackers":  func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { commands.Trackers(h, u, c) },
+		"add":       func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { commands.Add(h, u, a, c) },
+		"search":    func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { commands.Search(h, u, a, c) },
+		"latest":    func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { commands.Latest(h, u, a, c) },
+		"info":      func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { commands.Info(h, u, a, c) },
+		"stop":      func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { commands.Stop(h, u, a, c) },
+		"start":     func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { commands.Start(h, u, a, c) },
+		"check":     func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { commands.Check(h, u, a, c) },
+		"del":       func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { commands.Delete(h, u, a, c) },
+		"deldata":   func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { commands.DeleteData(h, u, a, c) },
+		"stats":     func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { commands.Stats(h, u, c) },
+		"uptime":    func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { commands.Uptime(h, u, c) },
+		"downlimit": func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { commands.DownloadLimit(h, u, a, c) },
+		"uplimit":   func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { commands.UploadLimit(h, u, a, c) },
+		"speed":     func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { commands.Speed(h, u, c) },
+		"count":     func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { commands.Count(h, u, c) },
+		"diskusage": func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { commands.DiskUsage(h, u, c) },
+		"move":      func(h *handlers.Handler, u tgbotapi.Update, a []string, c string) { commands.Move(h, u, a, c) },
 		// Note: "version" and "help" are handled separately in dispatchCommand
 	}
 
@@ -581,9 +628,7 @@ func buildCommandMap(cmds *Commands) map[string]CommandHandler {
 }
 
 // dispatchCommand routes commands to appropriate handlers using the command map from JSON
-func dispatchCommand(h *handlers.Handler, cfg *BotConfig, cmds *Commands, update tgbotapi.Update, command string, args []string) {
-	// Build command map from JSON (cache could be added here for performance)
-	cmdMap := buildCommandMap(cmds)
+func dispatchCommand(h *handlers.Handler, cfg *BotConfig, cmds *Commands, cmdMap map[string]CommandHandler, update tgbotapi.Update, command string, args []string) {
 
 	if cfg.Verbose {
 		cfg.Logger.Printf("[DEBUG] Dispatching command: %s", command)
@@ -597,7 +642,7 @@ func dispatchCommand(h *handlers.Handler, cfg *BotConfig, cmds *Commands, update
 		if cfg.Verbose {
 			cfg.Logger.Printf("[DEBUG] Executing version command")
 		}
-		h.Version(update, cfg.VERSION)
+		commands.Version(h, update, cfg.VERSION)
 		return
 	}
 
@@ -626,7 +671,7 @@ func dispatchCommand(h *handlers.Handler, cfg *BotConfig, cmds *Commands, update
 		if cfg.Verbose {
 			cfg.Logger.Printf("[DEBUG] No command match, treating as torrent file")
 		}
-		h.ReceiveTorrent(update)
+		commands.ReceiveTorrent(h, update)
 	} else {
 		if cfg.Verbose {
 			cfg.Logger.Printf("[DEBUG] Unknown command: %s, showing help", command)

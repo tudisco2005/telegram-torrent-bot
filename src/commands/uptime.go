@@ -1,26 +1,26 @@
-package handlers
+package commands
 
 import (
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/tudisco2005/telegram-torrent-bot/handlers"
 	tgbotapi "gopkg.in/telegram-bot-api.v4"
 )
 
 // Uptime shows the system uptime (reads /proc/uptime on Linux)
-func (h *Handler) Uptime(ud tgbotapi.Update, cmd string) {
+func Uptime(h *handlers.Handler, ud tgbotapi.Update, cmd string) {
 	// Prefer bot process start time if available
 	var d time.Duration
 	if !h.StartTime.IsZero() {
 		d = time.Since(h.StartTime)
 	} else {
-		// error
+
 		h.SendWithFormat(ud.Message.Chat.ID, "Uptime information not available", cmd)
 		return
 	}
 
-	// Format as Xd Yh Zm Ws
 	days := int(d.Hours()) / 24
 	hours := int(d.Hours()) % 24
 	mins := int(d.Minutes()) % 60

@@ -1,4 +1,4 @@
-package handlers
+package commands
 
 import (
 	"fmt"
@@ -7,12 +7,13 @@ import (
 	"syscall"
 
 	"github.com/dustin/go-humanize"
+	"github.com/tudisco2005/telegram-torrent-bot/handlers"
 	tgbotapi "gopkg.in/telegram-bot-api.v4"
 )
 
 // DiskFree reports used disk space for the default download location
-func (h *Handler) DiskUsage(ud tgbotapi.Update, cmd string) {
-	// Download location stats
+func DiskUsage(h *handlers.Handler, ud tgbotapi.Update, cmd string) {
+
 	dlPath := h.DefaultDownloadLocation
 	if dlPath == "" {
 		dlPath = "/"
@@ -36,7 +37,6 @@ func (h *Handler) DiskUsage(ud tgbotapi.Update, cmd string) {
 	dlUsed := humanize.Bytes(used)
 	dlTotal := humanize.Bytes(total)
 
-	// Move location stats
 	mvPath := h.DefaultMoveLocation
 	if mvPath == "" {
 		mvPath = os.Getenv("DEFAULT_MOVE_LOCATION")

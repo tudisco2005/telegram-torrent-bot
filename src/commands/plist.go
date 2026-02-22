@@ -1,4 +1,4 @@
-package handlers
+package commands
 
 import (
 	"bytes"
@@ -6,11 +6,12 @@ import (
 	"time"
 
 	"github.com/pyed/transmission"
+	"github.com/tudisco2005/telegram-torrent-bot/handlers"
 	tgbotapi "gopkg.in/telegram-bot-api.v4"
 )
 
 // Plist shows a pretty list with progress bars and status emojis
-func (h *Handler) Plist(ud tgbotapi.Update, tokens []string, cmd string) {
+func Plist(h *handlers.Handler, ud tgbotapi.Update, tokens []string, cmd string) {
 	torrents, err := h.Client.GetTorrents()
 	if err != nil {
 		h.SendWithFormat(ud.Message.Chat.ID, "*plist:* "+err.Error(), cmd)
@@ -52,7 +53,6 @@ func (h *Handler) Plist(ud tgbotapi.Update, tokens []string, cmd string) {
 			statusEmoji = "❓"
 		}
 
-		// build progress bar
 		filled := int(t.PercentDone*float64(barLen) + 0.5)
 		if filled < 0 {
 			filled = 0
@@ -62,19 +62,15 @@ func (h *Handler) Plist(ud tgbotapi.Update, tokens []string, cmd string) {
 		}
 		bar := "[" + strings.Repeat("=", filled) + strings.Repeat(" ", barLen-filled) + "]"
 
-		// percent as integer
 		pct := int(t.PercentDone * 100)
 
-		// ETA (use torrent.ETA() if available, otherwise -)
 		eta := t.ETA()
 		if eta == "" {
 			eta = "-"
 		}
 
-		// escape markdown name
 		name := h.Replacer.Replace(t.Name)
 
-		// Use the output_string template from commands.json via FormatOutputString
 		buf.WriteString(h.FormatOutputString(cmd, t.ID, name, statusEmoji, bar, pct, eta))
 	}
 
@@ -85,7 +81,6 @@ func (h *Handler) Plist(ud tgbotapi.Update, tokens []string, cmd string) {
 
 	msgID := h.SendWithFormat(ud.Message.Chat.ID, buf.String(), cmd)
 
-	// live updates: refresh progress bar for a while
 	if h.NoLive || h.UpdateMaxIterations == 0 {
 		return
 	}

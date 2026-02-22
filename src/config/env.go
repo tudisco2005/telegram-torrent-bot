@@ -1,6 +1,9 @@
 package config
 
 import (
+	"fmt"
+	"io"
+	"log"
 	"os"
 	"strconv"
 	"strings"
@@ -10,6 +13,7 @@ import (
 
 // EnvConfig holds environment configuration values
 type EnvConfig struct {
+	Logger                  *log.Logger
 	BotToken                *string
 	Masters                 *MasterSlice
 	RPCURL                  *string
@@ -26,7 +30,14 @@ type EnvConfig struct {
 
 // LoadEnvironmentConfig loads configuration from .env file and environment variables
 // It only sets values that are not already set (empty strings, false booleans, etc.)
-func LoadEnvironmentConfig(cfg *EnvConfig) {
+func LoadEnvironmentConfig(cfg *EnvConfig) error {
+	logErr := func(err error) error {
+		if cfg != nil && cfg.Logger != nil {
+			cfg.Logger.Printf("[ERROR] %v", err)
+		}
+		return err
+	}
+
 	// Load .env file if it exists (ignore errors if file doesn't exist)
 	// Try loading from current directory first, then from parent directory
 	_ = godotenv.Load(".env")
@@ -88,6 +99,14 @@ func LoadEnvironmentConfig(cfg *EnvConfig) {
 		}
 	}
 
+	if cfg.Logger != nil && cfg.LogFile != nil && *cfg.LogFile != "" {
+		logf, err := os.OpenFile(*cfg.LogFile, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+		if err != nil {
+			return logErr(fmt.Errorf("config: failed to open logfile %q: %w", *cfg.LogFile, err))
+		}
+		cfg.Logger.SetOutput(io.MultiWriter(os.Stdout, logf))
+	}
+
 	// DefaultTorrentLocation: check DEFAULT_TORRENT_LOCATION
 	if cfg.DefaultTorrentLocation != nil && *cfg.DefaultTorrentLocation == "" {
 		if dir := os.Getenv("DEFAULT_TORRENT_LOCATION"); dir != "" {
@@ -142,26 +161,28 @@ func LoadEnvironmentConfig(cfg *EnvConfig) {
 		}
 	}
 
-	// Validate required parameters: panic if not set
+	// Validate required parameters
 	if cfg.BotToken != nil && *cfg.BotToken == "" {
-		panic("config: required parameter TOKEN (or TT_BOTT) is not set")
+		return logErr(fmt.Errorf("config: required parameter TOKEN (or TT_BOTT) is not set"))
 	}
 	if cfg.Masters != nil && len(*cfg.Masters) == 0 {
-		panic("config: required parameter MASTER is not set")
+		return logErr(fmt.Errorf("config: required parameter MASTER is not set"))
 	}
 	if cfg.UpdateMaxIterations == nil || *cfg.UpdateMaxIterations == 0 {
-		panic("config: required parameter UPDATE_MAX_ITERATIONS is not set")
+		return logErr(fmt.Errorf("config: required parameter UPDATE_MAX_ITERATIONS is not set"))
 	}
 	if cfg.UpdateMaxIterations != nil && *cfg.UpdateMaxIterations < 0 {
-		panic("config: UPDATE_MAX_ITERATIONS must be greater than or equal to 0")
+		return logErr(fmt.Errorf("config: UPDATE_MAX_ITERATIONS must be greater than or equal to 0"))
 	}
 	if cfg.Username == nil || *cfg.Username == "" {
-		panic("config: required parameter USERNAME is not set")
+		return logErr(fmt.Errorf("config: required parameter USERNAME is not set"))
 	}
 	if cfg.Password == nil || *cfg.Password == "" {
-		panic("config: required parameter PASSWORD is not set")
+		return logErr(fmt.Errorf("config: required parameter PASSWORD is not set"))
 	}
 	if cfg.RPCURL == nil || *cfg.RPCURL == "" {
-		panic("config: required parameter RPC_URL is not set")
+		return logErr(fmt.Errorf("config: required parameter RPC_URL is not set"))
 	}
+
+	return nil
 }

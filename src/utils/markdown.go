@@ -13,7 +13,7 @@ var MarkdownReplacer = strings.NewReplacer("*", "•",
 	"`", "'")
 
 // TrackerRegex extracts tracker hostnames from URLs
-var TrackerRegex = regexp.MustCompile(`[https?|udp]://([^:/]*)`)
+var TrackerRegex = regexp.MustCompile(`(?:https?|udp)://([^:/]*)`)
 
 // EscapeMarkdown escapes markdown special characters in text
 func EscapeMarkdown(text string) string {

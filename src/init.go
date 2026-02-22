@@ -34,6 +34,7 @@ func InitFlags(cfg *AppConfig) error {
 
 	// Load environment configuration from .env file and environment variables
 	envCfg := &config.EnvConfig{
+		Logger:                  cfg.Logger,
 		BotToken:                &cfg.BotToken,
 		Masters:                 &cfg.Masters,
 		RPCURL:                  &cfg.RPCURL,
@@ -47,7 +48,9 @@ func InitFlags(cfg *AppConfig) error {
 		Verbose:                 &cfg.Verbose,
 		UpdateMaxIterations:     &cfg.UpdateMaxIterations,
 	}
-	config.LoadEnvironmentConfig(envCfg)
+	if err := config.LoadEnvironmentConfig(envCfg); err != nil {
+		return err
+	}
 
 	// make sure that we have the two mandatory arguments: telegram token & master's handler.
 	if cfg.BotToken == "" || len(cfg.Masters) < 1 {

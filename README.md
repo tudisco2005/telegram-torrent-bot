@@ -1,134 +1,274 @@
-# Telegram Torrent Bot
+# Telegram Torrent Bot (Transmission)
 
-this project is based on the original (transmission-telegram)[https://github.com/pyed/transmission-telegram/] with some improvement such as:
-- clear messages
-- detect duplicate torrent
-- fixed some bugs 
-- code divided in separeted files for better further developing
+A Telegram bot to control a Transmission daemon from chat.
 
-new feature:
-- move command that copy all files to a specific location on disk
-- save .torrent files in ./data/torrents folder inside the bot folder
-- verbose logging of events
-- startup message send to all user not older than a week(default)
+> This project is based on the original [transmission-telegram](https://github.com/pyed/transmission-telegram/) with some personal improvements
 
-### demo video:
+It supports listing/filtering torrents, start/stop/check/delete actions, adding torrents (URL/magnet and uploaded `.torrent` files), speed limits, disk usage, move/copy workflows, and automatic completion notifications.
 
+## Features
 
----
-## Install
+- Restricts command execution to configured Telegram master usernames.
+- Uses Transmission RPC (`github.com/pyed/transmission`) for torrent management.
+- Loads command metadata (aliases, help text, output formatting) from JSON.
+- Supports live-updating messages for status commands (editable Telegram messages).
+- Persists known chat IDs for startup/completion notifications.
+- Persists completed-notification tracking to avoid duplicate alerts after restart.
+- Supports uploaded `.torrent` files from Telegram documents.
 
-tested on:
-- Ubuntu 24.10
-- Ubuntu 24.04 LTS
+## Project Layout
 
-### Prerequisite
+- `src/main.go`: application entry point and wiring.
+- `src/init.go`: CLI flags + environment loading + client initialization.
+- `src/telegram/telegram.go`: Telegram event loop, auth checks, dispatching, completion poller.
+- `src/commands/*.go`: command implementations.
+- `src/config/env.go`: `.env`/environment parsing and validation.
+- `src/telegram/commands.json`: command definitions used for dispatch/help/format.
+- `src/telegram/categories.json`: help categories.
+- `start.sh`: convenience startup script (build-if-needed + run).
 
-install transmission
+## Requirements
 
-sudo add-apt-repository ppa:transmissionbt/ppa
-sudo apt-get update
-sudo apt-get install transmission-cli transmission-common transmission-daemon
+- Linux host (or compatible POSIX shell environment), tested on:
+    - Ubuntu 24.10 
+    - Ubuntu 24.04 LTS
+- Go `1.23.2+`
+- Running Transmission daemon with RPC enabled
+- `transmission-remote` installed and available in `PATH` (required by `start.sh`)
+- Telegram bot token from BotFather
 
-install go
+## Installation
 
-sudo apt update
-sudo apt install golang-go
-go version
+### 1) Clone and enter the project
 
-### install the bot
-https://github.com/tudisco2005/telegram-torrent-bot.git
-chmod +x start.sh
-cd ./telegram-torrent-bot/src
-go init telegram-torrent-bot
-go get
-cd ..
-
-edit the transsmission config file
-sudo service transmission-daemon stop
-sudo nano /var/lib/transmission-daemon/info/settings.json
-
-```json
-    "script-torrent-done-enabled": true,
-    "script-torrent-done-filename": "/home/<YOUR_USER>/bot/move.sh",
+```bash
+git clone https://github.com/tudisco2005/telegram-torrent-bot.git
+cd telegram-torrent-bot
 ```
-sudo service transmission-daemon start
 
-note: if look stuck or crashes after a bit
-systemctl edit --full transmission-daemon.service
-edit Type=notify to Type=simple
-sudo service transmission-daemon reload
-sudo service transmission-daemon start
+### 2) Install dependencies
 
-### make folders
+```bash
+cd src
+go mod download
+cd ..
+```
 
-mkdir ./log
-mkdir ./data
-mkdir ./data/torrents
-mkdir ./data/downloads
+### 3) Ensure required directories exist
 
-### fix move.sh
-replace
+```bash
+mkdir -p bin data/downloads data/torrents log
+```
 
-DESTINAZIONE="/home/<DESTINATION_USER>/bot/data/downloads"
-LOGFILE="/home/dipi/<DESTINATION_USER>/log/transmission-move.log"
+## Configuration
 
-not using $USER because need to be moved to another user home folder
+The app reads values from:
 
-### fix premission
+1. CLI flags
+2. `.env` file (`.env` or `../.env` from the process working directory)
+3. Environment variables
 
-if you donwload the repository in the home folder follow below, if not you need to change the paths
+CLI values take precedence over environment when already set.
 
-chmod o+x /home/$USER/
-chmod -R o+rx /home/$USER/bot
-sudo chgrp debian-transmission /home/$USER/bot/data/downloads/ 
-sudo chmod g+w /home/$USER/bot/data/downloads/
+### Required environment variables
 
-sudo chgrp debian-transmission /home/$USER/bot/log
-sudo chmod g+w /home/$USER/bot/log
+> Current code validation requires all of these:
 
-### setup the env variable
-cp .env.example .env
+- `TOKEN` (or `TT_BOTT`) — Telegram bot token
+- `MASTER` — one or more Telegram usernames (comma-separated), without `@` preferred
+- `USERNAME` (or `TR_AUTH`) — Transmission RPC username
+- `PASSWORD` — Transmission RPC password
+- `RPC_URL` — Transmission RPC URL (e.g. `http://localhost:9091/transmission/rpc`)
+- `UPDATE_MAX_ITERATIONS` — integer `> 0` (required by current validation)
 
-fill the .env file
+### Optional environment variables
 
-### Configure the .env file
+- `BOT_LOGFILE` — log file path
+- `DEFAULT_TORRENT_LOCATION` — where uploaded `.torrent` files are stored before adding
+- `DEFAULT_DOWNLOAD_LOCATION` — download directory used by some commands
+- `DEFAULT_MOVE_LOCATION` — destination for `/move` copy operations
+- `VERBOSE` — `1/true` enables debug logs
+- `REMOVE_ID_OLDER_THAN` — seconds; prunes stale chat IDs at startup
+- `TRANSMISSION_DONWNLOAD_LOCATION` — legacy/fallback variable (note the spelling used by the code)
 
-#### bot env
-get a telegram token bot:
-1. open telegram
-2. search botfather
-3. create a bot follwing the requests
-4. copy the bot token
-5. paste `TOKEN=<PASTE_YOUR_TOKEN_HERE>` #wihout the `<>`
+## Example `.env`
 
-`MASTER=@<TELEGRAM_USER_NAME>` # more masters are possible following this MASTER=user1,user2,user3
+```env
+# Telegram
+TOKEN=123456789:ABCDEF_your_bot_token
+MASTER=your_username,another_username
 
-#### trasmission env
-if the trasmission config is default, you can use
-RPC_URL=http://localhost:9091/transmission/rpc
+# Transmission RPC
+RPC_URL=http://127.0.0.1:9091/transmission/rpc
 USERNAME=transmission
 PASSWORD=transmission
 
-### Run the bot
+# Runtime behavior
+UPDATE_MAX_ITERATIONS=10
+VERBOSE=0
 
+# Paths
+DEFAULT_TORRENT_LOCATION=./data/torrents
+DEFAULT_DOWNLOAD_LOCATION=./data/downloads
+DEFAULT_MOVE_LOCATION=./data/moved
+
+# Optional
+BOT_LOGFILE=./log/bot.log
+REMOVE_ID_OLDER_THAN=2592000
+```
+
+## Running
+
+### Option A: Use startup script
+
+```bash
 ./start.sh
+```
 
----
-## For Developing
-file structure
+With CLI overrides:
 
-for saving location of torrent in move.sh change DESTINAZIONE
-warning you need to give transmission the permission
+```bash
+./start.sh -token="..." -master="@your_username" -url="http://127.0.0.1:9091/transmission/rpc" -username="..." -password="..."
+```
 
-other env paramether:
-DEFAULT_TORRENT_LOCATION= # path for saving .torrent files
-REMOVE_ID_OLDER_THAN= # start up message thressold 
-BOT_LOGFILE= # bot logfile
-VERBOSE=0 # debug information
+### Option B: Build and run manually
 
-### to do
-- [ ] dockerize
-- [ ] clear the code
-- [ ] custom buttons
-- [ ] notify user when donwnload is complete
+```bash
+cd src
+go build -o ../bin/telegram-torrent-bot
+cd ..
+./bin/telegram-torrent-bot
+```
+
+## CLI Flags
+
+- `-token` Telegram bot token
+- `-master` master username (repeatable)
+- `-url` Transmission RPC URL (default: `http://localhost:9091/transmission/rpc`)
+- `-username` Transmission RPC username
+- `-password` Transmission RPC password
+- `-logfile` log output file
+- `-no-live` disable live edit updates
+- `-verbose` enable debug logging
+
+## Command Reference
+
+The bot accepts commands with or without leading `/` in private chats. In groups, using `/` is recommended.
+
+It also treats a bare magnet/http URL message as an implicit `add` command.
+
+| Command | Aliases | Category | Description | Example |
+|---|---|---|---|---|
+| `/list` | `/li`, `/ls` | list | Lists all the torrents | - |
+| `/plist` | `/pls` | list | Pretty list with progress bars | - |
+| `/head` | `/he` | list | Lists the first n torrents | `/head 10` |
+| `/tail` | `/ta` | list | Lists the last n torrents | `/tail 10` |
+| `/downs` | `/dg` | filter | Lists downloading torrents | - |
+| `/seeding` | `/sd` | filter | Lists seeding torrents | - |
+| `/paused` | `/pa` | filter | Lists paused torrents | - |
+| `/checking` | `/ch` | filter | Lists torrents being verified | - |
+| `/active` | `/ac` | filter | Lists actively uploading/downloading torrents | - |
+| `/errors` | `/er` | filter | Lists torrents with errors | - |
+| `/sort` | `/so` | list | Manipulate sorting | `/sort [option]` |
+| `/trackers` | `/tr` | information | Lists all trackers | - |
+| `/add` | `/ad` | management | Add URLs or magnets | `/add <magnet-link> or /add <http-url>` |
+| `/search` | `/se` | filter | Search torrents by name | `/search <query>` |
+| `/latest` | `/la` | list | Lists newest torrents | `/latest 5` |
+| `/info` | `/in` | information | Get info about torrents | `/info <id1> <id2>` |
+| `/stop` | `/sp` | management | Stop torrents | `/stop <id1> <id2> or /stop all` |
+| `/start` | `/st` | management | Start torrents | `/start <id1> <id2> or /start all` |
+| `/check` | `/ck` | management | Verify torrents | `/check <id1> <id2> or /check all` |
+| `/del` | `/rm` | management | Delete only torrents | `/del <id1> <id2>` |
+| `/deldata` | - | management | Delete torrents and data | `/deldata <id1> <id2>` |
+| `/move` | - | management | Copy/list/clear downloads using move workflow | `/move ?` |
+| `/stats` | `/sa` | information | Show transmission stats | - |
+| `/uptime` | - | general | Show system uptime | - |
+| `/diskusage` | `/du` | general | Show used disk space for download directory | - |
+| `/downlimit` | `/dl` | configuration | Set download speed limit | `/downlimit 1024` |
+| `/uplimit` | `/ul` | configuration | Set upload speed limit | `/uplimit 512` |
+| `/speed` | `/ss` | information | Show upload/download speeds | - |
+| `/count` | `/co` | information | Show torrents count per status | - |
+| `/help` | `/h`, `/?` | general | Show help message | - |
+| `/version` | `/ver` | general | Show version numbers | - |
+
+### `/sort` options
+
+- `id`, `name`, `age`, `size`, `progress`, `downspeed`, `upspeed`, `download`, `upload`, `ratio`
+- Prefix with `rev` for reverse order (e.g. `sort rev size`)
+
+### `/move` subcommands
+
+- `move` — show per-torrent move status
+- `move all` — copy all not-yet-moved entries
+- `move <id> [id2 ...]` — copy by torrent IDs
+- `move reset` — clear move records
+- `move clear` — remove entries in destination and clear move records
+- `move ?` — show move help
+
+## Authorization Model
+
+- Only users listed in `MASTER` can execute commands.
+- Incoming messages from non-master users are ignored.
+- Authorized chats are persisted in `src/telegram/chat.json` with timestamps.
+
+## Notifications and Persistence
+
+- On startup, bot sends an online message to known chat IDs.
+- A background poller checks torrent completion and sends grouped completion messages.
+- Completed-notification state is persisted to `src/telegram/completed.json`.
+- Move operation state is persisted in `moved.json` (near `DEFAULT_MOVE_LOCATION`).
+
+## Logging
+
+- Default logs go to stdout.
+- If `BOT_LOGFILE` or `-logfile` is set, logs are written to both stdout and file.
+- `VERBOSE=true` or `-verbose` enables debug-level operational logs.
+
+## Troubleshooting
+
+### Bot exits on startup with config errors
+
+Check required env values:
+
+- `TOKEN/TT_BOTT`
+- `MASTER`
+- `USERNAME/TR_AUTH`
+- `PASSWORD`
+- `RPC_URL`
+- `UPDATE_MAX_ITERATIONS` (must be set and greater than `0` in current code)
+
+### Transmission RPC connection fails
+
+- Verify `RPC_URL`, `USERNAME`, and `PASSWORD`.
+- Ensure Transmission daemon is running and RPC is enabled.
+- Confirm host/container/firewall networking if remote.
+
+### `start.sh` says `transmission-remote` missing
+
+Install transmission CLI tools for your distribution and ensure `transmission-remote` is in `PATH`.
+
+### Uploaded `.torrent` files are rejected
+
+- Ensure `DEFAULT_TORRENT_LOCATION` exists or is writable.
+- Verify Telegram bot has access to fetch files and network egress is allowed.
+
+## Development
+
+Build:
+
+```bash
+cd src
+go build -o ../bin/telegram-torrent-bot
+```
+
+Run with logs:
+
+```bash
+cd ..
+./start.sh -verbose
+```
+
+## Version
+
+Current bot constant in source: `v1.0.0`.
+

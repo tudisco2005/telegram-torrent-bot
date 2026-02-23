@@ -2,6 +2,7 @@ package commands
 
 import (
 	"bytes"
+	"fmt"
 	"strings"
 	"time"
 
@@ -32,12 +33,14 @@ func Plist(h *handlers.Handler, ud tgbotapi.Update, tokens []string, cmd string)
 	}
 
 	const barLen = 15
+	listedCount := 0
 
 	for i := range torrents {
 		t := torrents[i]
 		if filter != "" && !strings.Contains(strings.ToLower(t.Name), filter) {
 			continue
 		}
+		listedCount++
 
 		// determine emoji based on state
 		var statusEmoji string
@@ -79,7 +82,7 @@ func Plist(h *handlers.Handler, ud tgbotapi.Update, tokens []string, cmd string)
 		return
 	}
 
-	msgID := h.SendWithFormat(ud.Message.Chat.ID, buf.String(), cmd)
+	msgID := h.SendWithFormat(ud.Message.Chat.ID, fmt.Sprintf("Listing %d torrents:\n%s", listedCount, buf.String()), cmd)
 
 	if h.NoLive || h.UpdateMaxIterations == 0 {
 		return
@@ -96,6 +99,7 @@ func Plist(h *handlers.Handler, ud tgbotapi.Update, tokens []string, cmd string)
 		for i := 0; i < iterations; i++ {
 			time.Sleep(h.Interval)
 			liveBuf.Reset()
+			liveListedCount := 0
 
 			ts, err := h.Client.GetTorrents()
 			if err != nil {
@@ -107,6 +111,7 @@ func Plist(h *handlers.Handler, ud tgbotapi.Update, tokens []string, cmd string)
 				if filter != "" && !strings.Contains(strings.ToLower(t.Name), filter) {
 					continue
 				}
+				liveListedCount++
 
 				var statusEmoji string
 				if t.Error != 0 {
@@ -138,7 +143,7 @@ func Plist(h *handlers.Handler, ud tgbotapi.Update, tokens []string, cmd string)
 				liveBuf.WriteString(h.FormatOutputString(cmd, t.ID, name, statusEmoji, bar, pct, eta))
 			}
 
-			editConf := tgbotapi.NewEditMessageText(chatID, msgID, liveBuf.String())
+			editConf := tgbotapi.NewEditMessageText(chatID, msgID, fmt.Sprintf("Listing %d torrents:\n%s", liveListedCount, liveBuf.String()))
 			editConf.ParseMode = tgbotapi.ModeMarkdown
 			if resp, err := h.Bot.Send(editConf); err != nil {
 				h.Logger.Printf("[DEBUG] EditMessage failed: ChatID=%d MsgID=%d Len=%d Err=%v", chatID, msgID, len(liveBuf.String()), err)

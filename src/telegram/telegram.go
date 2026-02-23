@@ -98,6 +98,9 @@ type BotConfig struct {
 	Updates                 <-chan tgbotapi.Update
 	Masters                 config.MasterSlice
 	Client                  *transmission.TransmissionClient
+	RPCURL                  string
+	RPCUsername             string
+	RPCPassword             string
 	NoLive                  bool
 	Interval                time.Duration
 	Duration                int
@@ -170,9 +173,15 @@ func sendMessage(bot *tgbotapi.BotAPI, text string, chatID int64, markdown bool)
 }
 
 // Start begins the telegram bot event loop
-func Start(cfg *BotConfig) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+func Start(ctx context.Context, cfg *BotConfig) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	go func() {
+		<-ctx.Done()
+		cfg.Bot.StopReceivingUpdates()
+	}()
 
 	// Load commands from JSON
 	commandsPath := resolveExistingPath(
@@ -229,6 +238,9 @@ func Start(cfg *BotConfig) {
 	h := &handlers.Handler{
 		Bot:                     cfg.Bot,
 		Client:                  cfg.Client,
+		RPCURL:                  cfg.RPCURL,
+		RPCUsername:             cfg.RPCUsername,
+		RPCPassword:             cfg.RPCPassword,
 		BotToken:                cfg.Bot.Token,
 		DefaultTorrentLocation:  cfg.DefaultTorrentLocation,
 		DefaultDownloadLocation: cfg.DefaultDownloadLocation,
@@ -311,9 +323,21 @@ func Start(cfg *BotConfig) {
 			notified[id] = true
 		}
 
+		persistTracked := func() {
+			ids := make([]int, 0, len(notified))
+			for id := range notified {
+				ids = append(ids, id)
+			}
+			sort.Ints(ids)
+			if err := utils.SaveTracked(completedPath, ids); err != nil {
+				cfg.Logger.Printf("[DEBUG] completion poll: failed to save tracked IDs: %v", err)
+			}
+		}
+
 		for {
 			select {
 			case <-ctx.Done():
+				persistTracked()
 				return
 			case <-ticker.C:
 			}
@@ -360,121 +384,143 @@ func Start(cfg *BotConfig) {
 			}
 
 			if changed {
-				// persist current notified IDs
-				ids := make([]int, 0, len(notified))
-				for id := range notified {
-					ids = append(ids, id)
-				}
-				sort.Ints(ids)
-				if err := utils.SaveTracked(completedPath, ids); err != nil {
-					cfg.Logger.Printf("[DEBUG] completion poll: failed to save tracked IDs: %v", err)
-				}
+				persistTracked()
 			}
 		}
 	}()
 
 	// Main event loop
-	for update := range cfg.Updates {
-		// Verbose logging: log all updates received
-		if cfg.Verbose {
-			cfg.Logger.Printf("[DEBUG] Update received: UpdateID=%d", update.UpdateID)
-			if update.Message != nil {
-				cfg.Logger.Printf("[DEBUG] Message: ChatID=%d, From=%s (ID:%d), Text=%q, Date=%d",
-					update.Message.Chat.ID,
-					update.Message.From.UserName,
-					update.Message.From.ID,
-					update.Message.Text,
-					update.Message.Date)
-				if update.Message.Document != nil {
-					cfg.Logger.Printf("[DEBUG] Document: FileID=%s, FileName=%s, FileSize=%d",
-						update.Message.Document.FileID,
-						update.Message.Document.FileName,
-						update.Message.Document.FileSize)
-				}
-			} else {
-				cfg.Logger.Printf("[DEBUG] Update without message (edited message or other type)")
+	for {
+		select {
+		case <-ctx.Done():
+			cfg.Logger.Printf("[INFO] Telegram event loop stopped")
+			return
+		case update, ok := <-cfg.Updates:
+			if !ok {
+				cfg.Logger.Printf("[INFO] Telegram updates channel closed")
+				return
 			}
-		}
-
-		// ignore edited messages
-		if update.Message == nil {
+			// Verbose logging: log all updates received
 			if cfg.Verbose {
-				cfg.Logger.Printf("[DEBUG] Ignoring update: no message")
-			}
-			continue
-		}
-
-		// Only update/add this chat ID if the sender is a configured master
-		if cfg.Masters.Contains(update.Message.From.UserName) {
-			// Update or add this chat ID in chat.json (refresh timestamp or append)
-			if added, err := utils.AddOrUpdateChatID(chatPath, update.Message.Chat.ID); err != nil {
-				cfg.Logger.Printf("[WARNING] Failed to add/update chat ID %d: %v", update.Message.Chat.ID, err)
-			} else {
-				if added && cfg.Verbose {
-					cfg.Logger.Printf("[DEBUG] Added new chat ID %d to telegram/chat.json", update.Message.Chat.ID)
+				cfg.Logger.Printf("[DEBUG] Update received: UpdateID=%d", update.UpdateID)
+				if update.Message != nil {
+					fromUsername := ""
+					fromID := int64(0)
+					if update.Message.From != nil {
+						fromUsername = update.Message.From.UserName
+						fromID = int64(update.Message.From.ID)
+					}
+					cfg.Logger.Printf("[DEBUG] Message: ChatID=%d, From=%s (ID:%d), Text=%q, Date=%d",
+						update.Message.Chat.ID,
+						fromUsername,
+						fromID,
+						update.Message.Text,
+						update.Message.Date)
+					if update.Message.Document != nil {
+						cfg.Logger.Printf("[DEBUG] Document: FileID=%s, FileName=%s, FileSize=%d",
+							update.Message.Document.FileID,
+							update.Message.Document.FileName,
+							update.Message.Document.FileSize)
+					}
+				} else {
+					cfg.Logger.Printf("[DEBUG] Update without message (edited message or other type)")
 				}
 			}
-		} else {
-			if cfg.Verbose {
-				cfg.Logger.Printf("[DEBUG] Not adding chat ID %d: user %s is not a master", update.Message.Chat.ID, update.Message.From.UserName)
+
+			// ignore edited messages
+			if update.Message == nil {
+				if cfg.Verbose {
+					cfg.Logger.Printf("[DEBUG] Ignoring update: no message")
+				}
+				continue
 			}
-		}
 
-		// ignore non masters
-		if !cfg.Masters.Contains(update.Message.From.UserName) {
-			if cfg.Verbose {
-				cfg.Logger.Printf("[DEBUG] Ignoring message: user %s is not a master (masters: %v)",
-					update.Message.From.UserName, cfg.Masters)
+			if update.Message.From == nil {
+				if cfg.Verbose {
+					cfg.Logger.Printf("[DEBUG] Ignoring message: sender info is missing")
+				}
+				continue
 			}
-			continue
-		}
 
-		if cfg.Verbose {
-			cfg.Logger.Printf("[DEBUG] User %s is authorized master", update.Message.From.UserName)
-		}
+			senderUsername := update.Message.From.UserName
 
-		// Skip empty messages
-		if update.Message.Text == "" && update.Message.Document == nil {
-			if cfg.Verbose {
-				cfg.Logger.Printf("[DEBUG] Skipping empty message")
+			// Only update/add this chat ID if the sender is a configured master
+			if cfg.Masters.Contains(senderUsername) {
+				// Update or add this chat ID in chat.json (refresh timestamp or append)
+				if added, err := utils.AddOrUpdateChatID(chatPath, update.Message.Chat.ID); err != nil {
+					cfg.Logger.Printf("[WARNING] Failed to add/update chat ID %d: %v", update.Message.Chat.ID, err)
+				} else {
+					if added && cfg.Verbose {
+						cfg.Logger.Printf("[DEBUG] Added new chat ID %d to telegram/chat.json", update.Message.Chat.ID)
+					}
+				}
+			} else {
+				if cfg.Verbose {
+					cfg.Logger.Printf("[DEBUG] Not adding chat ID %d: user %s is not a master", update.Message.Chat.ID, senderUsername)
+				}
 			}
-			continue
-		}
 
-		// tokenize the update
-		tokens := strings.Split(update.Message.Text, " ")
-
-		// Extract command and remove '/' prefix if present
-		command := strings.TrimPrefix(strings.ToLower(tokens[0]), "/")
-		var args []string
-		if len(tokens) > 1 {
-			args = tokens[1:]
-		}
-
-		// If message is a bare URL/magnet (no leading /add), treat it as an add command
-		if strings.HasPrefix(tokens[0], "magnet") || strings.HasPrefix(tokens[0], "http") {
-			if cfg.Verbose {
-				cfg.Logger.Printf("[DEBUG] Detected URL/magnet link, prepending 'add' command")
+			// ignore non masters
+			if !cfg.Masters.Contains(senderUsername) {
+				if cfg.Verbose {
+					cfg.Logger.Printf("[DEBUG] Ignoring message: user %s is not a master (masters: %v)",
+						senderUsername, cfg.Masters)
+				}
+				continue
 			}
-			command = "add"
-			args = []string{update.Message.Text}
-		}
 
-		// If this is an add command and the first arg looks like a URL/magnet,
-		// join all remaining tokens into a single argument to avoid splitting on spaces
-		if command == "add" && len(args) > 0 && (strings.HasPrefix(args[0], "magnet") || strings.HasPrefix(args[0], "http")) {
 			if cfg.Verbose {
-				cfg.Logger.Printf("[DEBUG] Detected add with split URL, joining args into single URL")
+				cfg.Logger.Printf("[DEBUG] User %s is authorized master", senderUsername)
 			}
-			args = []string{strings.Join(args, " ")}
-		}
 
-		if cfg.Verbose {
-			cfg.Logger.Printf("[DEBUG] Processing command: %s, args: %v", command, args)
-		}
+			messageText := strings.TrimSpace(update.Message.Text)
 
-		// Dispatch command
-		dispatchCommand(h, cfg, cmds, cmdMap, update, command, args)
+			// Skip fully empty payloads
+			if messageText == "" && update.Message.Document == nil {
+				if cfg.Verbose {
+					cfg.Logger.Printf("[DEBUG] Skipping empty message")
+				}
+				continue
+			}
+
+			// tokenize the update (Fields handles repeated whitespace safely)
+			tokens := strings.Fields(messageText)
+			if len(tokens) == 0 {
+				// No textual command; let dispatch handle document uploads.
+				dispatchCommand(h, cfg, cmds, cmdMap, update, "", nil)
+				continue
+			}
+
+			// Extract command and remove '/' prefix if present
+			command := strings.TrimPrefix(strings.ToLower(tokens[0]), "/")
+			args := tokens[1:]
+
+			// If message is a bare URL/magnet (no leading /add), treat it as an add command
+			firstTokenLower := strings.ToLower(tokens[0])
+			if strings.HasPrefix(firstTokenLower, "magnet") || strings.HasPrefix(firstTokenLower, "http") {
+				if cfg.Verbose {
+					cfg.Logger.Printf("[DEBUG] Detected URL/magnet link, prepending 'add' command")
+				}
+				command = "add"
+				args = []string{messageText}
+			}
+
+			// If this is an add command and the first arg looks like a URL/magnet,
+			// join all remaining tokens into a single argument to avoid splitting on spaces
+			if command == "add" && len(args) > 0 && (strings.HasPrefix(args[0], "magnet") || strings.HasPrefix(args[0], "http")) {
+				if cfg.Verbose {
+					cfg.Logger.Printf("[DEBUG] Detected add with split URL, joining args into single URL")
+				}
+				args = []string{strings.Join(args, " ")}
+			}
+
+			if cfg.Verbose {
+				cfg.Logger.Printf("[DEBUG] Processing command: %s, args: %v", command, args)
+			}
+
+			// Dispatch command
+			dispatchCommand(h, cfg, cmds, cmdMap, update, command, args)
+		}
 	}
 }
 

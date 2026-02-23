@@ -15,6 +15,9 @@ import (
 type Handler struct {
 	Bot                     *tgbotapi.BotAPI
 	Client                  *transmission.TransmissionClient
+	RPCURL                  string
+	RPCUsername             string
+	RPCPassword             string
 	BotToken                string // used to download files from Telegram
 	DefaultTorrentLocation  string // directory where received .torrent files are saved before adding to Transmission
 	DefaultDownloadLocation string // directory where downloaded files are stored

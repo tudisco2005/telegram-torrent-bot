@@ -79,7 +79,6 @@ CLI values take precedence over environment when already set.
 - `USERNAME` (or `TR_AUTH`) — Transmission RPC username
 - `PASSWORD` — Transmission RPC password
 - `RPC_URL` — Transmission RPC URL (e.g. `http://localhost:9091/transmission/rpc`)
-- `UPDATE_MAX_ITERATIONS` — integer `> 0` (required by current validation)
 
 ### Optional environment variables
 
@@ -90,6 +89,7 @@ CLI values take precedence over environment when already set.
 - `VERBOSE` — `1/true` enables debug logs
 - `REMOVE_ID_OLDER_THAN` — seconds; prunes stale chat IDs at startup
 - `TRANSMISSION_DONWNLOAD_LOCATION` — legacy/fallback variable (note the spelling used by the code)
+- `UPDATE_MAX_ITERATIONS` — integer `>= 0`; `0` disables live updates, values `> 0` cap live-update edits per message
 
 ## Example `.env`
 
@@ -235,7 +235,7 @@ Check required env values:
 - `USERNAME/TR_AUTH`
 - `PASSWORD`
 - `RPC_URL`
-- `UPDATE_MAX_ITERATIONS` (must be set and greater than `0` in current code)
+- `UPDATE_MAX_ITERATIONS` (optional; if set, must be greater than or equal to `0`)
 
 ### Transmission RPC connection fails
 

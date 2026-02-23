@@ -1,9 +1,12 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/pyed/transmission"
@@ -87,6 +90,9 @@ func main() {
 		Updates:                 cfg.Updates,
 		Masters:                 cfg.Masters,
 		Client:                  cfg.Client,
+		RPCURL:                  cfg.RPCURL,
+		RPCUsername:             cfg.Username,
+		RPCPassword:             cfg.Password,
 		NoLive:                  cfg.NoLive,
 		Interval:                cfg.Interval,
 		Duration:                cfg.Duration,
@@ -101,6 +107,14 @@ func main() {
 		Verbose:                 cfg.Verbose,
 	}
 
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	go func() {
+		<-ctx.Done()
+		cfg.Logger.Printf("[INFO] Shutdown signal received, stopping bot...")
+	}()
+
 	// Start Telegram bot event loop
-	telegram.Start(botCfg)
+	telegram.Start(ctx, botCfg)
 }

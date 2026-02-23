@@ -1,9 +1,12 @@
 package commands
 
 import (
+	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/tudisco2005/telegram-torrent-bot/handlers"
+	"github.com/tudisco2005/telegram-torrent-bot/utils"
 	tgbotapi "gopkg.in/telegram-bot-api.v4"
 )
 
@@ -16,16 +19,32 @@ func Check(h *handlers.Handler, ud tgbotapi.Update, tokens []string, cmd string)
 	}
 
 	if tokens[0] == "all" {
+		h.SendWithFormat(ud.Message.Chat.ID, "Verifying all torrents", cmd)
 
 		torrents, err := h.Client.GetTorrents()
 		if err != nil {
 			h.SendWithFormat(ud.Message.Chat.ID, "*check:* "+err.Error(), cmd)
 			return
 		}
+
+		okCount := 0
+		errCount := 0
+		errorLines := make([]string, 0)
+
 		for _, t := range torrents {
-			h.Client.VerifyTorrent(t.ID)
+			_, verifyErr := h.Client.VerifyTorrent(t.ID)
+			if verifyErr != nil {
+				errCount++
+				errorLines = append(errorLines, fmt.Sprintf("`<%d>` %s `%s`", t.ID, utils.EscapeFileMD(t.Name), utils.EscapeMarkdown(verifyErr.Error())))
+				continue
+			}
+			okCount++
 		}
-		h.SendWithFormat(ud.Message.Chat.ID, "Verifying all torrents", cmd)
+
+		h.SendWithFormat(ud.Message.Chat.ID, fmt.Sprintf("Checked torrents: %d ok, %d error", okCount, errCount), cmd)
+		if errCount > 0 {
+			h.SendWithFormat(ud.Message.Chat.ID, "List of torrents with errors (id:error):\n"+strings.Join(errorLines, "\n"), cmd)
+		}
 		return
 	}
 

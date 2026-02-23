@@ -2,7 +2,6 @@ package config
 
 import (
 	"fmt"
-	"io"
 	"log"
 	"os"
 	"strconv"
@@ -99,14 +98,6 @@ func LoadEnvironmentConfig(cfg *EnvConfig) error {
 		}
 	}
 
-	if cfg.Logger != nil && cfg.LogFile != nil && *cfg.LogFile != "" {
-		logf, err := os.OpenFile(*cfg.LogFile, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-		if err != nil {
-			return logErr(fmt.Errorf("config: failed to open logfile %q: %w", *cfg.LogFile, err))
-		}
-		cfg.Logger.SetOutput(io.MultiWriter(os.Stdout, logf))
-	}
-
 	// DefaultTorrentLocation: check DEFAULT_TORRENT_LOCATION
 	if cfg.DefaultTorrentLocation != nil && *cfg.DefaultTorrentLocation == "" {
 		if dir := os.Getenv("DEFAULT_TORRENT_LOCATION"); dir != "" {
@@ -168,8 +159,8 @@ func LoadEnvironmentConfig(cfg *EnvConfig) error {
 	if cfg.Masters != nil && len(*cfg.Masters) == 0 {
 		return logErr(fmt.Errorf("config: required parameter MASTER is not set"))
 	}
-	if cfg.UpdateMaxIterations == nil || *cfg.UpdateMaxIterations == 0 {
-		return logErr(fmt.Errorf("config: required parameter UPDATE_MAX_ITERATIONS is not set"))
+	if cfg.UpdateMaxIterations == nil {
+		return logErr(fmt.Errorf("config: UPDATE_MAX_ITERATIONS is not configured"))
 	}
 	if cfg.UpdateMaxIterations != nil && *cfg.UpdateMaxIterations < 0 {
 		return logErr(fmt.Errorf("config: UPDATE_MAX_ITERATIONS must be greater than or equal to 0"))

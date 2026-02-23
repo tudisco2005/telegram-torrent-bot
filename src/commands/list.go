@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"fmt"
 	"bytes"
 	"regexp"
 
@@ -19,7 +20,6 @@ func List(h *handlers.Handler, ud tgbotapi.Update, tokens []string, cmd string) 
 	buf := new(bytes.Buffer)
 
 	if len(tokens) != 0 {
-
 		regx, err := regexp.Compile("(?i)" + tokens[0])
 		if err != nil {
 			h.SendWithFormat(ud.Message.Chat.ID, "*list:* "+err.Error(), cmd)
@@ -43,7 +43,6 @@ func List(h *handlers.Handler, ud tgbotapi.Update, tokens []string, cmd string) 
 	}
 
 	if buf.Len() == 0 {
-
 		if len(tokens) != 0 {
 			h.SendWithFormat(ud.Message.Chat.ID, "*list:* no matches", cmd, "markdown")
 			return
@@ -52,5 +51,5 @@ func List(h *handlers.Handler, ud tgbotapi.Update, tokens []string, cmd string) 
 		return
 	}
 
-	h.SendWithFormat(ud.Message.Chat.ID, buf.String(), cmd)
+	h.SendWithFormat(ud.Message.Chat.ID, fmt.Sprintf("Listing %d torrents:\n%s", len(torrents), buf.String()), cmd)
 }

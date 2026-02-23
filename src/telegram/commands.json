@@ -56,7 +56,7 @@
       "description": "Lists downloading torrents",
       "output_format": "markdown",
       "list_output": true,
-      "output_string": "<%d> %s\n"
+      "output_string": "`<%d>` %s\n"
     },
     {
       "name": "seeding",
@@ -67,7 +67,7 @@
       "description": "Lists seeding torrents",
       "output_format": "markdown",
       "list_output": true,
-      "output_string": "<%d> %s\n"
+      "output_string": "`<%d>` %s\n"
     },
     {
       "name": "paused",
@@ -78,7 +78,7 @@
       "description": "Lists paused torrents",
       "output_format": "markdown",
       "list_output": true,
-      "output_string": "<%d> %s\n"
+      "output_string": "`<%d>` %s\n"
     },
     {
       "name": "checking",
@@ -89,7 +89,7 @@
       "description": "Lists torrents being verified",
       "output_format": "markdown",
       "list_output": true,
-      "output_string": "<%d> %s\n"
+      "output_string": "`<%d>` %s\n"
     },
     {
       "name": "active",
@@ -158,7 +158,7 @@
       "example": "/search <query>",
       "output_format": "markdown",
       "list_output": true,
-      "output_string": "<%d> %s\n"
+      "output_string": "`<%d>` %s\n"
     },
     {
       "name": "latest",

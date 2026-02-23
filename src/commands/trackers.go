@@ -36,5 +36,5 @@ func Trackers(h *handlers.Handler, ud tgbotapi.Update, cmd string) {
 		h.SendWithFormat(ud.Message.Chat.ID, "No trackers!", cmd)
 		return
 	}
-	h.SendWithFormat(ud.Message.Chat.ID, buf.String(), cmd)
+	h.SendWithPaginationFormat(ud.Message.Chat.ID, buf.String(), cmd)
 }

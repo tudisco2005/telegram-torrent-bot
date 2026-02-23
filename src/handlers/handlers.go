@@ -39,6 +39,9 @@ type Handler struct {
 	liveMu      sync.Mutex
 	liveCancels map[string]liveTask
 	liveSeq     int64
+
+	paginationMu      sync.Mutex
+	paginationSession map[string]paginationSession
 }
 
 type liveTask struct {
@@ -85,23 +88,8 @@ func (h *Handler) FormatOutputString(command string, args ...interface{}) string
 
 // SendWithFormat sends a message using the output_format defined in commands.json for the given command.
 func (h *Handler) SendWithFormat(chatID int64, text string, command string, args ...interface{}) int {
-	cmdKey := strings.ToLower(strings.TrimSpace(command))
-	format := strings.ToLower(strings.TrimSpace(h.OutputFormatByCommand[cmdKey]))
-
-	if format != "markdown" && format != "plain" {
-		format = "plain" // default to plain if not specified or invalid
-	}
-
-	if len(args) > 0 {
-		if override, ok := args[len(args)-1].(string); ok {
-			normalized := strings.ToLower(strings.TrimSpace(override))
-			if normalized == "markdown" || normalized == "plain" {
-				format = normalized
-			}
-		}
-	}
-
-	return h.SendMessage.Send(text, chatID, format == "markdown")
+	msgID, _ := h.SendWithPaginationFormat(chatID, text, command, args...)
+	return msgID
 }
 
 // StringReplacer interface for replacing strings

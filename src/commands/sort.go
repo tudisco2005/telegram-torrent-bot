@@ -8,13 +8,21 @@ import (
 	tgbotapi "gopkg.in/telegram-bot-api.v4"
 )
 
+func sendSortHelp(h *handlers.Handler, chatID int64, cmd string) {
+	h.SendWithFormat(chatID, `*sort* takes one of:
+		(*id, name, age, size, progress, downspeed, upspeed, download, upload, ratio*)
+		optionally start with (*rev*) for reversed order
+		e.g. "*sort rev size*" to get biggest torrents first.`, cmd)
+}
+
 // Sort changes how torrents are sorted
 func Sort(h *handlers.Handler, ud tgbotapi.Update, tokens []string, cmd string) {
 	if len(tokens) == 0 {
-		h.SendWithFormat(ud.Message.Chat.ID, `*sort* takes one of:
-			(*id, name, age, size, progress, downspeed, upspeed, download, upload, ratio*)
-			optionally start with (*rev*) for reversed order
-			e.g. "*sort rev size*" to get biggest torrents first.`, cmd)
+		sendSortHelp(h, ud.Message.Chat.ID, cmd)
+		return
+	}
+	if strings.ToLower(tokens[0]) == "?" || strings.ToLower(tokens[0]) == "help" {
+		sendSortHelp(h, ud.Message.Chat.ID, cmd)
 		return
 	}
 
@@ -26,6 +34,10 @@ func Sort(h *handlers.Handler, ud tgbotapi.Update, tokens []string, cmd string) 
 
 	if len(tokens) == 0 {
 		h.SendWithFormat(ud.Message.Chat.ID, "missing sorting method after rev", cmd)
+		return
+	}
+	if strings.ToLower(tokens[0]) == "?" || strings.ToLower(tokens[0]) == "help" {
+		sendSortHelp(h, ud.Message.Chat.ID, cmd)
 		return
 	}
 

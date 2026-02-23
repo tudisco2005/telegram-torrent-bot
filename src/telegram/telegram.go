@@ -400,6 +400,24 @@ func Start(ctx context.Context, cfg *BotConfig) {
 				cfg.Logger.Printf("[INFO] Telegram updates channel closed")
 				return
 			}
+
+			if update.CallbackQuery != nil {
+				if update.CallbackQuery.From == nil {
+					continue
+				}
+
+				if !cfg.Masters.Contains(update.CallbackQuery.From.UserName) {
+					if cfg.Verbose {
+						cfg.Logger.Printf("[DEBUG] Ignoring callback from non-master: %s", update.CallbackQuery.From.UserName)
+					}
+					continue
+				}
+
+				if h.HandlePaginationCallback(update) {
+					continue
+				}
+			}
+
 			// Verbose logging: log all updates received
 			if cfg.Verbose {
 				cfg.Logger.Printf("[DEBUG] Update received: UpdateID=%d", update.UpdateID)
@@ -698,8 +716,7 @@ func dispatchCommand(h *handlers.Handler, cfg *BotConfig, cmds *Commands, cmdMap
 			cfg.Logger.Printf("[DEBUG] Executing help command")
 		}
 		helpMsg := generateHelpMessage(cmds)
-		useMarkdown := h.OutputFormatByCommand["help"] == "markdown"
-		cfg.SendMessage.Send(helpMsg, update.Message.Chat.ID, useMarkdown)
+		h.SendWithFormat(update.Message.Chat.ID, helpMsg, "help")
 		return
 	}
 

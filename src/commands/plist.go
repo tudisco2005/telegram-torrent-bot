@@ -19,6 +19,15 @@ func Plist(h *handlers.Handler, ud tgbotapi.Update, tokens []string, cmd string)
 		return
 	}
 
+	sorter, tokens, err := parseInlineSort(tokens)
+	if err != nil {
+		h.SendWithFormat(ud.Message.Chat.ID, "*plist:* "+err.Error(), cmd)
+		return
+	}
+	if sorter != nil {
+		sorter(torrents)
+	}
+
 	if len(torrents) == 0 {
 		h.SendWithFormat(ud.Message.Chat.ID, "No torrents", cmd)
 		return
@@ -82,7 +91,10 @@ func Plist(h *handlers.Handler, ud tgbotapi.Update, tokens []string, cmd string)
 		return
 	}
 
-	msgID := h.SendWithFormat(ud.Message.Chat.ID, fmt.Sprintf("Listing %d torrents:\n%s", listedCount, buf.String()), cmd)
+	msgID, paged := h.SendWithPaginationFormat(ud.Message.Chat.ID, fmt.Sprintf("Listing %d torrents:\n%s", listedCount, buf.String()), cmd)
+	if paged {
+		return
+	}
 
 	if h.NoLive || h.UpdateMaxIterations == 0 {
 		return
@@ -104,6 +116,9 @@ func Plist(h *handlers.Handler, ud tgbotapi.Update, tokens []string, cmd string)
 			ts, err := h.Client.GetTorrents()
 			if err != nil {
 				continue
+			}
+			if sorter != nil {
+				sorter(ts)
 			}
 
 			for j := range ts {

@@ -1,8 +1,8 @@
 package commands
 
 import (
-	"fmt"
 	"bytes"
+	"fmt"
 	"regexp"
 
 	"github.com/tudisco2005/telegram-torrent-bot/handlers"
@@ -15,6 +15,15 @@ func List(h *handlers.Handler, ud tgbotapi.Update, tokens []string, cmd string) 
 	if err != nil {
 		h.SendWithFormat(ud.Message.Chat.ID, "*list:* "+err.Error(), cmd)
 		return
+	}
+
+	sorter, tokens, err := parseInlineSort(tokens)
+	if err != nil {
+		h.SendWithFormat(ud.Message.Chat.ID, "*list:* "+err.Error(), cmd)
+		return
+	}
+	if sorter != nil {
+		sorter(torrents)
 	}
 
 	buf := new(bytes.Buffer)
@@ -51,5 +60,5 @@ func List(h *handlers.Handler, ud tgbotapi.Update, tokens []string, cmd string) 
 		return
 	}
 
-	h.SendWithFormat(ud.Message.Chat.ID, fmt.Sprintf("Listing %d torrents:\n%s", len(torrents), buf.String()), cmd)
+	h.SendWithPaginationFormat(ud.Message.Chat.ID, fmt.Sprintf("Listing %d torrents:\n%s", len(torrents), buf.String()), cmd)
 }

@@ -1,4 +1,4 @@
-package commands
+package helpers
 
 import (
 	"fmt"
@@ -7,9 +7,9 @@ import (
 	"github.com/pyed/transmission"
 )
 
-type torrentSorter func(transmission.Torrents)
+type TorrentSorter func(transmission.Torrents)
 
-func parseInlineSort(tokens []string) (torrentSorter, []string, error) {
+func ParseInlineSort(tokens []string) (TorrentSorter, []string, error) {
 	if len(tokens) == 0 || strings.ToLower(tokens[0]) != "sort" {
 		return nil, tokens, nil
 	}

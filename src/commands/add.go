@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/pyed/transmission"
+	"github.com/tudisco2005/telegram-torrent-bot/commands/helpers"
 	"github.com/tudisco2005/telegram-torrent-bot/handlers"
 	"github.com/tudisco2005/telegram-torrent-bot/utils"
 	tgbotapi "gopkg.in/telegram-bot-api.v4"
@@ -42,7 +43,7 @@ func Add(h *handlers.Handler, ud tgbotapi.Update, tokens []string, cmd string) {
 
 		h.Logger.Printf("[DEBUG] Add: url=%s added=%#v existingID=%v", link, added, existingIDs[added.ID])
 
-		metadataPending, blocked := validateAddedTorrent(
+		metadataPending, blocked := helpers.ValidateAddedTorrent(
 			h,
 			ud.Message.Chat.ID,
 			cmd,

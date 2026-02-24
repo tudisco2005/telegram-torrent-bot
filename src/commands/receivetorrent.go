@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/tudisco2005/telegram-torrent-bot/commands/helpers"
 	tgbotapi "gopkg.in/telegram-bot-api.v4"
 
 	"github.com/pyed/transmission"
@@ -96,7 +97,7 @@ func ReceiveTorrent(h *handlers.Handler, ud tgbotapi.Update) {
 	}
 	h.Logger.Printf("[DEBUG] ReceiveTorrent: added to Transmission id=%d name=%q", added.ID, added.Name)
 
-	_, blocked := validateAddedTorrent(
+	_, blocked := helpers.ValidateAddedTorrent(
 		h,
 		ud.Message.Chat.ID,
 		"add",

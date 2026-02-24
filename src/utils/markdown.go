@@ -30,3 +30,11 @@ func EscapeFileMD(name string) string {
 	)
 	return replacer.Replace(name)
 }
+
+func EscapeFileMDList(names []string) []string {
+	escaped := make([]string, len(names))
+	for i, name := range names {
+		escaped[i] = EscapeFileMD(name)
+	}
+	return escaped
+}

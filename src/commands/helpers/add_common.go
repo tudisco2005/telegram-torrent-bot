@@ -1,4 +1,4 @@
-package commands
+package helpers
 
 import (
 	"fmt"
@@ -17,10 +17,10 @@ func withSourceSuffix(message string, source string) string {
 	return message + " — " + source
 }
 
-// validateAddedTorrent checks disk-space/error constraints after adding a torrent.
+// ValidateAddedTorrent checks disk-space/error constraints after adding a torrent.
 // It returns metadataPending=true when metadata polling goroutine was started,
 // and blocked=true when the torrent has been stopped/deleted due to validation failures.
-func validateAddedTorrent(h *handlers.Handler, chatID int64, cmd string, torrentID int, source string, metadataPendingMessage string) (metadataPending bool, blocked bool) {
+func ValidateAddedTorrent(h *handlers.Handler, chatID int64, cmd string, torrentID int, source string, metadataPendingMessage string) (metadataPending bool, blocked bool) {
 	path := h.DefaultDownloadLocation
 	if path == "" {
 		path = "/"

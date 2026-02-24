@@ -80,6 +80,9 @@ func Move(h *handlers.Handler, ud tgbotapi.Update, tokens []string, cmd string) 
 				h.SendWithFormat(ud.Message.Chat.ID, "move: failed to read destination: "+derr.Error(), cmd)
 				return
 			}
+
+			h.SendWithFormat(ud.Message.Chat.ID, "clearing destination...", cmd)
+
 			var deleted []string
 			var deleteErrs []string
 			for _, ent := range dstEntries {
@@ -96,7 +99,7 @@ func Move(h *handlers.Handler, ud tgbotapi.Update, tokens []string, cmd string) 
 			}
 			msg := "move: cleared destination"
 			if len(deleted) > 0 {
-				msg = msg + ": deleted:\n- " + strings.Join(deleted, "\n- ")
+				msg = msg + ": deleted:\n- " + strings.Join(utils.EscapeFileMDList(deleted), "\n- ")
 			} else {
 				msg = msg + ": nothing deleted"
 			}
@@ -241,32 +244,79 @@ func Move(h *handlers.Handler, ud tgbotapi.Update, tokens []string, cmd string) 
 
 	var copied []string
 	var errorsList []string
+	skippedDuplicates := 0
+	failedCount := 0
 
-	for _, name := range toProcess {
+	if len(toProcess) == 0 {
+		h.SendWithFormat(ud.Message.Chat.ID, "move: no completed downloads found to copy", cmd)
+		return
+	}
+
+	progressStartedAt := time.Now()
+	progressMsgID := h.SendWithFormat(ud.Message.Chat.ID, buildMoveProgressMessage(0, len(toProcess), 0, 0, 0, progressStartedAt), cmd, "markdown")
+	lastProgressUpdate := time.Now()
+
+	for i, name := range toProcess {
 		sPath := filepath.Join(src, name)
 		dPath := filepath.Join(dst, name)
 
 		sHash, err := computePathHash(sPath)
 		if err != nil {
 			errorsList = append(errorsList, fmt.Sprintf("%s: failed to compute hash: %v", name, err))
+			failedCount++
+			if progressMsgID > 0 {
+				done := i + 1
+				if done == len(toProcess) || time.Since(lastProgressUpdate) >= 700*time.Millisecond {
+					updateMoveProgressMessage(h, ud.Message.Chat.ID, progressMsgID, buildMoveProgressMessage(done, len(toProcess), len(copied), skippedDuplicates, failedCount, progressStartedAt))
+					lastProgressUpdate = time.Now()
+				}
+			}
 			continue
 		}
 		if existing, ok := dstHashes[sHash]; ok {
 			h.Logger.Printf("[INFO] Move: skipping %s - duplicate of destination %s (hash)", sPath, existing)
 
 			errorsList = append(errorsList, fmt.Sprintf("%s: duplicate of %s (skipped)", name, existing))
+			skippedDuplicates++
 
 			moved[name] = map[string]string{"moved_at": time.Now().Format(time.RFC3339), "dest": existing, "hash": sHash}
+			if progressMsgID > 0 {
+				done := i + 1
+				if done == len(toProcess) || time.Since(lastProgressUpdate) >= 700*time.Millisecond {
+					updateMoveProgressMessage(h, ud.Message.Chat.ID, progressMsgID, buildMoveProgressMessage(done, len(toProcess), len(copied), skippedDuplicates, failedCount, progressStartedAt))
+					lastProgressUpdate = time.Now()
+				}
+			}
 			continue
 		}
 
 		if err := copyPath(sPath, dPath); err != nil {
 			errorsList = append(errorsList, fmt.Sprintf("%s: %v", name, err))
+			failedCount++
+			if progressMsgID > 0 {
+				done := i + 1
+				if done == len(toProcess) || time.Since(lastProgressUpdate) >= 700*time.Millisecond {
+					updateMoveProgressMessage(h, ud.Message.Chat.ID, progressMsgID, buildMoveProgressMessage(done, len(toProcess), len(copied), skippedDuplicates, failedCount, progressStartedAt))
+					lastProgressUpdate = time.Now()
+				}
+			}
 			continue
 		}
 
 		moved[name] = map[string]string{"moved_at": time.Now().Format(time.RFC3339), "dest": dPath, "hash": sHash}
 		copied = append(copied, name)
+
+		if progressMsgID > 0 {
+			done := i + 1
+			if done == len(toProcess) || time.Since(lastProgressUpdate) >= 700*time.Millisecond {
+				updateMoveProgressMessage(h, ud.Message.Chat.ID, progressMsgID, buildMoveProgressMessage(done, len(toProcess), len(copied), skippedDuplicates, failedCount, progressStartedAt))
+				lastProgressUpdate = time.Now()
+			}
+		}
+	}
+
+	if progressMsgID > 0 {
+		updateMoveProgressMessage(h, ud.Message.Chat.ID, progressMsgID, buildMoveProgressMessage(len(toProcess), len(toProcess), len(copied), skippedDuplicates, failedCount, progressStartedAt)+"\nmove completed.")
 	}
 
 	if b, err := json.MarshalIndent(moved, "", "  "); err == nil {
@@ -284,11 +334,73 @@ func Move(h *handlers.Handler, ud tgbotapi.Update, tokens []string, cmd string) 
 		return
 	}
 
-	msg := fmt.Sprintf("move: copied %d item(s) to %s\n- %s", len(copied), dst, strings.Join(copied, "\n- "))
+	msg := fmt.Sprintf("move: copied %d item(s) to %s\n- %s", len(copied), utils.EscapeFileMD(dst), strings.Join(utils.EscapeFileMDList(copied), "\n- "))
 	if len(errorsList) > 0 {
 		msg = msg + "\nErrors: " + strings.Join(errorsList, "; ")
 	}
 	h.SendWithFormat(ud.Message.Chat.ID, msg, cmd)
+}
+
+func updateMoveProgressMessage(h *handlers.Handler, chatID int64, messageID int, text string) {
+	if messageID <= 0 {
+		return
+	}
+	edit := tgbotapi.NewEditMessageText(chatID, messageID, text)
+	edit.ParseMode = tgbotapi.ModeMarkdown
+	if _, err := h.Bot.Send(edit); err != nil {
+		h.Logger.Printf("[DEBUG] Move: failed to update progress message: chat=%d msg=%d err=%v", chatID, messageID, err)
+	}
+}
+
+func buildMoveProgressMessage(done, total, copied, skipped, failed int, startedAt time.Time) string {
+	return fmt.Sprintf("move started...\n%s\n%d/%d processed | copied: %d | skipped: %d | failed: %d", buildMoveProgressBar(done, total, startedAt), done, total, copied, skipped, failed)
+}
+
+func buildMoveProgressBar(done, total int, startedAt time.Time) string {
+	const width = 15
+	if total <= 0 {
+		return fmt.Sprintf("`%s` 0%% ETA: n/a", utils.ProgressBar(0, width))
+	}
+	if done < 0 {
+		done = 0
+	}
+	if done > total {
+		done = total
+	}
+	bar := utils.ProgressBar(float64(done)/float64(total), width)
+	percent := (done * 100) / total
+
+	eta := "n/a"
+	if done > 0 && done < total && !startedAt.IsZero() {
+		elapsed := time.Since(startedAt)
+		if elapsed < 0 {
+			elapsed = 0
+		}
+		elapsedPerItem := elapsed / time.Duration(done)
+		remaining := total - done
+		etaDuration := elapsedPerItem * time.Duration(remaining)
+		eta = formatETA(etaDuration)
+	}
+
+	return fmt.Sprintf("`%s` %d%% ETA: %s", bar, percent, eta)
+}
+
+func formatETA(d time.Duration) string {
+	if d < 0 {
+		d = 0
+	}
+	seconds := int(d.Round(time.Second).Seconds())
+	if seconds < 60 {
+		return fmt.Sprintf("%ds", seconds)
+	}
+	minutes := seconds / 60
+	secs := seconds % 60
+	if minutes < 60 {
+		return fmt.Sprintf("%dm %ds", minutes, secs)
+	}
+	hours := minutes / 60
+	mins := minutes % 60
+	return fmt.Sprintf("%dh %dm", hours, mins)
 }
 
 func copyPath(src, dst string) error {

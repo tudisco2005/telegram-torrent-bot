@@ -6,6 +6,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/tudisco2005/telegram-torrent-bot/commands/helpers"
 	"github.com/tudisco2005/telegram-torrent-bot/handlers"
 	tgbotapi "gopkg.in/telegram-bot-api.v4"
 )
@@ -37,6 +38,7 @@ func Start(h *handlers.Handler, ud tgbotapi.Update, tokens []string, cmd string)
 		}
 
 		started := 0
+		startedIncomplete := make([]int, 0)
 		for _, t := range torrents {
 
 			if t.SizeWhenDone > 0 {
@@ -61,7 +63,13 @@ func Start(h *handlers.Handler, ud tgbotapi.Update, tokens []string, cmd string)
 
 			if _, err := h.Client.StartTorrent(t.ID); err == nil {
 				started++
+				if t.PercentDone < 1.0 {
+					startedIncomplete = append(startedIncomplete, t.ID)
+				}
 			}
+		}
+		if len(startedIncomplete) > 0 {
+			helpers.AddTrackedIDs(h, startedIncomplete)
 		}
 		h.SendWithFormat(ud.Message.Chat.ID, fmt.Sprintf("Started %d torrents", started), cmd)
 		return
@@ -114,5 +122,9 @@ func Start(h *handlers.Handler, ud tgbotapi.Update, tokens []string, cmd string)
 		}
 		msg := h.FormatOutputString(cmd, status, torrent.Name)
 		h.SendWithFormat(ud.Message.Chat.ID, msg, cmd)
+
+		if torrent.PercentDone < 1.0 {
+			helpers.AddTrackedIDs(h, []int{num})
+		}
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"regexp"
 
+	"github.com/tudisco2005/telegram-torrent-bot/commands/helpers"
 	"github.com/tudisco2005/telegram-torrent-bot/handlers"
 	tgbotapi "gopkg.in/telegram-bot-api.v4"
 )
@@ -17,7 +18,7 @@ func List(h *handlers.Handler, ud tgbotapi.Update, tokens []string, cmd string) 
 		return
 	}
 
-	sorter, tokens, err := parseInlineSort(tokens)
+	sorter, tokens, err := helpers.ParseInlineSort(tokens)
 	if err != nil {
 		h.SendWithFormat(ud.Message.Chat.ID, "*list:* "+err.Error(), cmd)
 		return

@@ -3,6 +3,7 @@ package commands
 import (
 	"strconv"
 
+	"github.com/tudisco2005/telegram-torrent-bot/commands/helpers"
 	"github.com/tudisco2005/telegram-torrent-bot/handlers"
 	tgbotapi "gopkg.in/telegram-bot-api.v4"
 )
@@ -22,8 +23,15 @@ func Stop(h *handlers.Handler, ud tgbotapi.Update, tokens []string, cmd string) 
 			h.SendWithFormat(ud.Message.Chat.ID, "*stop:* "+err.Error(), cmd)
 			return
 		}
+		incompleteIDs := make([]int, 0)
 		for _, t := range torrents {
 			h.Client.StopTorrent(t.ID)
+			if t.PercentDone < 1.0 {
+				incompleteIDs = append(incompleteIDs, t.ID)
+			}
+		}
+		if len(incompleteIDs) > 0 {
+			helpers.RemoveTrackedIDs(h, incompleteIDs)
 		}
 		h.SendWithFormat(ud.Message.Chat.ID, "Stopped all torrents", cmd)
 		return
@@ -48,5 +56,9 @@ func Stop(h *handlers.Handler, ud tgbotapi.Update, tokens []string, cmd string) 
 		}
 		msg := h.FormatOutputString(cmd, status, torrent.Name)
 		h.SendWithFormat(ud.Message.Chat.ID, msg, cmd)
+
+		if torrent.PercentDone < 1.0 {
+			helpers.RemoveTrackedIDs(h, []int{num})
+		}
 	}
 }

@@ -3,29 +3,54 @@ package commands
 import (
 	"bytes"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/pyed/transmission"
+	"github.com/tudisco2005/telegram-torrent-bot/commands/helpers"
 	"github.com/tudisco2005/telegram-torrent-bot/handlers"
+	"github.com/tudisco2005/telegram-torrent-bot/utils"
 	tgbotapi "gopkg.in/telegram-bot-api.v4"
 )
 
 // Plist shows a pretty list with progress bars and status emojis
 func Plist(h *handlers.Handler, ud tgbotapi.Update, tokens []string, cmd string) {
+	mode := "downloading"
+	if len(tokens) > 0 {
+		switch strings.ToLower(tokens[0]) {
+		case "?", "help":
+			help := "plist usage:\n" +
+				"- `pls` : list downloading torrents\n" +
+				"- `pls all` : list all torrents (downloading, paused, complete)\n" +
+				"- `pls stopped` : list paused/stopped downloads\n" +
+				"- `pls ?` : show this help"
+			h.SendWithFormat(ud.Message.Chat.ID, help, cmd)
+			return
+		case "all":
+			mode = "all"
+			tokens = tokens[1:]
+		case "stopped", "paused":
+			mode = "stopped"
+			tokens = tokens[1:]
+		}
+	}
+
 	torrents, err := h.Client.GetTorrents()
 	if err != nil {
 		h.SendWithFormat(ud.Message.Chat.ID, "*plist:* "+err.Error(), cmd)
 		return
 	}
 
-	sorter, tokens, err := parseInlineSort(tokens)
+	sorter, tokens, err := helpers.ParseInlineSort(tokens)
 	if err != nil {
 		h.SendWithFormat(ud.Message.Chat.ID, "*plist:* "+err.Error(), cmd)
 		return
 	}
 	if sorter != nil {
 		sorter(torrents)
+	} else if mode == "all" {
+		sortAllByState(torrents)
 	}
 
 	if len(torrents) == 0 {
@@ -46,6 +71,9 @@ func Plist(h *handlers.Handler, ud tgbotapi.Update, tokens []string, cmd string)
 
 	for i := range torrents {
 		t := torrents[i]
+		if !plistMatchMode(t, mode) {
+			continue
+		}
 		if filter != "" && !strings.Contains(strings.ToLower(t.Name), filter) {
 			continue
 		}
@@ -65,14 +93,7 @@ func Plist(h *handlers.Handler, ud tgbotapi.Update, tokens []string, cmd string)
 			statusEmoji = "❓"
 		}
 
-		filled := int(t.PercentDone*float64(barLen) + 0.5)
-		if filled < 0 {
-			filled = 0
-		}
-		if filled > barLen {
-			filled = barLen
-		}
-		bar := "[" + strings.Repeat("=", filled) + strings.Repeat(" ", barLen-filled) + "]"
+		bar := utils.ProgressBar(t.PercentDone, barLen)
 
 		pct := int(t.PercentDone * 100)
 
@@ -119,10 +140,15 @@ func Plist(h *handlers.Handler, ud tgbotapi.Update, tokens []string, cmd string)
 			}
 			if sorter != nil {
 				sorter(ts)
+			} else if mode == "all" {
+				sortAllByState(ts)
 			}
 
 			for j := range ts {
 				t := ts[j]
+				if !plistMatchMode(t, mode) {
+					continue
+				}
 				if filter != "" && !strings.Contains(strings.ToLower(t.Name), filter) {
 					continue
 				}
@@ -141,14 +167,7 @@ func Plist(h *handlers.Handler, ud tgbotapi.Update, tokens []string, cmd string)
 					statusEmoji = "❓"
 				}
 
-				filled := int(t.PercentDone*float64(barLen) + 0.5)
-				if filled < 0 {
-					filled = 0
-				}
-				if filled > barLen {
-					filled = barLen
-				}
-				bar := "[" + strings.Repeat("=", filled) + strings.Repeat(" ", barLen-filled) + "]"
+				bar := utils.ProgressBar(t.PercentDone, barLen)
 				pct := int(t.PercentDone * 100)
 				eta := t.ETA()
 				if eta == "" {
@@ -167,4 +186,36 @@ func Plist(h *handlers.Handler, ud tgbotapi.Update, tokens []string, cmd string)
 			}
 		}
 	}()
+}
+
+func plistMatchMode(t *transmission.Torrent, mode string) bool {
+	switch mode {
+	case "all":
+		return true
+	case "stopped":
+		return t.Status == transmission.StatusStopped && t.PercentDone < 1.0
+	default: // downloading
+		return t.PercentDone < 1.0 && t.Status != transmission.StatusStopped
+	}
+}
+
+func sortAllByState(ts transmission.Torrents) {
+	sort.SliceStable(ts, func(i, j int) bool {
+		gi := plistStateGroup(ts[i])
+		gj := plistStateGroup(ts[j])
+		if gi != gj {
+			return gi < gj
+		}
+		return ts[i].ID < ts[j].ID
+	})
+}
+
+func plistStateGroup(t *transmission.Torrent) int {
+	if t.PercentDone >= 1.0 {
+		return 2
+	}
+	if t.Status == transmission.StatusStopped {
+		return 1
+	}
+	return 0
 }

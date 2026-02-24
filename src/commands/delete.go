@@ -3,6 +3,7 @@ package commands
 import (
 	"strconv"
 
+	"github.com/tudisco2005/telegram-torrent-bot/commands/helpers"
 	"github.com/tudisco2005/telegram-torrent-bot/handlers"
 	"github.com/tudisco2005/telegram-torrent-bot/utils"
 	tgbotapi "gopkg.in/telegram-bot-api.v4"
@@ -23,26 +24,21 @@ func Delete(h *handlers.Handler, ud tgbotapi.Update, tokens []string, cmd string
 			continue
 		}
 
+		wasIncomplete := false
+		if t, terr := h.Client.GetTorrent(num); terr == nil {
+			wasIncomplete = t.PercentDone < 1.0
+		} else {
+			h.Logger.Printf("[DEBUG] del: failed to inspect torrent %d before delete: %v", num, terr)
+		}
+
 		name, err := h.Client.DeleteTorrent(num, false)
 		if err != nil {
 			h.SendWithFormat(ud.Message.Chat.ID, "*deldata:* "+err.Error(), cmd)
 			continue
 		}
 
-		if tracked, terr := utils.LoadTracked(h.CompletedFilePath); terr == nil {
-			newTracked := make([]int, 0, len(tracked))
-			for _, id := range tracked {
-				if id != num {
-					newTracked = append(newTracked, id)
-				}
-			}
-			if len(newTracked) != len(tracked) {
-				if serr := utils.SaveTracked(h.CompletedFilePath, newTracked); serr != nil {
-					h.Logger.Printf("[WARNING] failed to update %s: %v", h.CompletedFilePath, serr)
-				}
-			}
-		} else {
-			h.Logger.Printf("[DEBUG] failed to load telegram/completed.json: %v", terr)
+		if wasIncomplete {
+			helpers.RemoveTrackedIDs(h, []int{num})
 		}
 
 		safeName := utils.EscapeFileMD(name)

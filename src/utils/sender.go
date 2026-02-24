@@ -2,7 +2,9 @@ package utils
 
 import (
 	"encoding/json"
+	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -165,6 +167,9 @@ func LoadTracked(path string) ([]int, error) {
 
 	decoder := json.NewDecoder(file)
 	if err := decoder.Decode(&ids); err != nil {
+		if err == io.EOF {
+			return []int{}, nil
+		}
 		return nil, err
 	}
 	return ids, nil
@@ -172,16 +177,45 @@ func LoadTracked(path string) ([]int, error) {
 
 // SaveTracked writes the provided slice of tracked torrent IDs to the given path as pretty JSON.
 func SaveTracked(path string, ids []int) error {
-	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	return writeJSONAtomic(path, ids)
+}
+
+func writeJSONAtomic(path string, v interface{}) error {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return err
+	}
+
+	tmp, err := os.CreateTemp(dir, ".tmp-json-*")
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	tmpPath := tmp.Name()
+	defer func() {
+		tmp.Close()
+		os.Remove(tmpPath)
+	}()
 
-	encoder := json.NewEncoder(file)
+	encoder := json.NewEncoder(tmp)
 	encoder.SetIndent("", "  ")
-	if err := encoder.Encode(ids); err != nil {
+	if err := encoder.Encode(v); err != nil {
 		return err
 	}
+
+	if err := tmp.Sync(); err != nil {
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+
+	if err := os.Chmod(tmpPath, 0644); err != nil {
+		return err
+	}
+
+	if err := os.Rename(tmpPath, path); err != nil {
+		return err
+	}
+
 	return nil
 }

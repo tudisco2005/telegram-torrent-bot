@@ -12,13 +12,24 @@ It supports listing/filtering torrents, start/stop/check/delete actions, adding 
 
 ## Features
 
-- Restricts command execution to configured Telegram master usernames.
-- Uses Transmission RPC (`github.com/pyed/transmission`) for torrent management.
-- Loads command metadata (aliases, help text, output formatting) from JSON.
-- Supports live-updating messages for status commands (editable Telegram messages).
-- Persists known chat IDs for startup/completion notifications.
-- Persists completed-notification tracking to avoid duplicate alerts after restart.
-- Supports uploaded `.torrent` files from Telegram documents.
+### Previous features (from [pyed/transmission-telegram](https://github.com/pyed/transmission-telegram/))
+
+- Telegram command interface for Transmission RPC torrent management.
+- Listing and filtering torrents by status, plus detailed torrent info.
+- Torrent lifecycle actions (start, stop, check, delete).
+- Add torrents from magnet links and HTTP(S) URLs.
+- Speed/statistics utilities (upload/download speed, limits, tracker and status views).
+- Access control via configured Telegram master usernames.
+
+### New features in this fork
+
+- Add torrents by uploading `.torrent` files directly in Telegram.
+- Move/copy workflow commands for completed downloads (`/move`, `all`, `reset`, `clear`).
+- Persist known chat IDs for startup and completion notifications.
+- Persist completed-notification tracking to prevent duplicates after restart.
+- Live-updating Telegram messages for status-style commands (editable message output).
+- JSON-driven command metadata (aliases, help text, output formatting).
+- New commands
 
 ## Requirements
 
@@ -131,24 +142,6 @@ It also treats a bare magnet/http URL message as an implicit `add` command.
 - `move reset` — clear move records
 - `move clear` — remove entries in destination and clear move records
 - `move ?` — show move help
-
-
-## Development
-
-Build:
-
-```bash
-cd src
-go build -o ../bin/telegram-torrent-bot
-```
-
-Run with logs:
-
-```bash
-cd ..
-./start.sh -verbose
-```
-
 
 ## Version
 

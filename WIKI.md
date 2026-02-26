@@ -1,245 +1,381 @@
 # Telegram Torrent Bot Wiki
 
-This wiki is a practical guide for:
-
-- using the bot (commands + runtime behavior)
-- configuring environment variables
-- further development (logic, structure, extension points)
+This document is the complete reference for this repository: runtime behavior, commands, environment configuration, operational details, and extension points for development.
 
 
-## 1) Using the Bot
 
-## 1.1 Authorization and message handling behavior
+## 1) What this bot does
 
-- Only users in `MASTER` are allowed to execute commands.
-- Non-master messages are ignored (no command execution).
-- Chat IDs are persisted in `src/telegram/chat.json` only when the sender is authorized.
-- At startup, the bot loads known chat IDs and sends a startup message.
-- Bare `magnet...` or `http(s)...` messages are auto-treated as `add` command.
-- Uploaded Telegram documents are treated as torrent uploads when command lookup fails.
+This bot controls a Transmission daemon via Telegram.
 
-Notes:
+Core capabilities:
 
-- In private chats, commands can be sent with or without `/`.
-- In group chats, use `/command` format.
+- manage torrents (add/start/stop/check/delete)
+- inspect state (list/filter/info/stats/speed/count/trackers)
+- set transfer limits
+- receive `.torrent` files from Telegram documents
+- send startup + completion notifications to known chats
+- copy completed downloads to a target directory with progress + duplicate detection
+- paginate long responses with inline callback buttons
 
-## 1.2 Help/commands metadata model
 
-Command metadata is defined in:
 
-- `src/telegram/commands.json` (aliases, descriptions, output format/template)
-- `src/telegram/categories.json` (help grouping/order)
+## 2) Runtime behavior (end-to-end)
 
-The dispatcher builds a name+alias map at runtime. `help` and `version` are handled as special cases.
+## 2.1 Startup flow
 
-## 1.3 Command behavior reference
+On process startup:
 
-### List/filter commands
+1. Parse CLI flags (`src/init.go`).
+2. Load `.env` from `.env` then `../.env`, then environment variables (`src/config/env.go`).
+3. Validate required config values.
+4. Initialize Transmission RPC client.
+5. Initialize Telegram bot API + update channel.
+6. Load command metadata from JSON.
+7. Load known chat IDs from `telegram/chat.json` (or `src/telegram/chat.json` fallback path set).
+8. Optionally prune old chat IDs using `REMOVE_ID_OLDER_THAN`.
+9. Send startup message to known chats.
+10. Start:
+   - Telegram update/event loop
+   - completion poller loop (every ~30s)
 
-- `list`, `plist`, `head`, `tail`
-- `downs`, `seeding`, `paused`, `checking`, `active`, `errors`
-- `search`, `latest`, `trackers`, `count`
+## 2.2 Authorization model
 
-Behavior:
+- Only users listed in `MASTER` are authorized.
+- Non-master messages and callback queries are ignored.
+- Chat IDs are persisted only when the sender is authorized.
+- `MASTER` usernames are normalized to lowercase and stripped of `@`.
 
-- Most list outputs are markdown-formatted via templates in `commands.json`.
-- Large outputs are paginated with inline buttons (`Prev`/`Next`) and temporary pagination sessions.
+## 2.3 Message parsing rules
 
-### Management commands
+- Private chat: command may be sent with or without `/`.
+- Group chat: prefer `/command`.
+- Bare message starting with `magnet` or `http` is auto-routed as `add`.
+- Unknown command + attached Telegram document is treated as torrent upload flow.
+- Empty message with no document is ignored.
 
-- `add`: add URL/magnet links to Transmission.
-- `stop`, `start`, `check`: operate by IDs or `all` where supported.
-- `del`: remove torrent records only.
-- `deldata`: remove torrent + downloaded data.
-- `move`: copy/list/reset/clear move state and destination content.
+## 2.4 Command dispatch model
 
-### Information/general/config commands
+- Command metadata lives in:
+  - `src/telegram/commands.json`
+  - `src/telegram/categories.json`
+- Dispatcher builds command/alias map at runtime.
+- Canonical command name is resolved for formatting/templates.
+- `help` and `version` are handled as explicit special cases in dispatcher logic.
 
-- `info`, `stats`, `speed`, `diskusage`, `uptime`, `version`
-- `downlimit`, `uplimit`
-- `help`
 
-## 1.4 Live update behavior
 
-Some commands can live-edit the same Telegram message (for progress-like output), including:
+## 3) Command reference (full)
 
-- `speed`, `info`, `head`, `tail`, `plist`, `move`  (and any command implementing edit loops)
+All command formats below can generally be used with or without `/` in private chat.
 
-Controls:
+## 3.1 Listing commands
 
-- `NO_LIVE=true` disables live edits.
-- `UPDATE_MAX_ITERATIONS=0` also disables live updates.
-- If enabled, updates run on internal interval/duration and can be capped by `UPDATE_MAX_ITERATIONS`.
-- A per-command chat key is used to cancel previous live tasks when a new one starts.
+All listing commands in this section use the currently active Transmission sort order (set with `sort` / `so`).
+If no custom sort is set, Transmission default ordering is used.
 
-## 1.5 Torrent completion notifications
+### `list` (`li`, `ls`)
+- Purpose: list all torrents.
+- Output: one line per torrent with ID + escaped name.
 
-Background poller behavior:
+### `plist` (`pls`)
+- Purpose: pretty list with progress bars + ETA.
+- Output: markdown-rich multi-line block per torrent.
 
-- Polls torrents periodically.
-- Compares current incomplete IDs vs tracked incomplete IDs.
-- Sends grouped "Downloads complete" messages to known chat IDs.
-- Persists tracking state to `src/telegram/track.json`.
+### `head` (`he`) `[n]`
+- Purpose: list first `n` torrents.
+- Default behavior: command implementation clamps/bounds list length.
+- Supports live updates when enabled.
 
-## 1.6 Torrent file upload behavior
+### `tail` (`ta`) `[n]`
+- Purpose: list last `n` torrents.
+- Supports live updates when enabled.
 
-When a `.torrent` file is sent as Telegram document:
+### `latest` (`la`) `[n]`
+- Purpose: list newest torrents.
 
-1. File metadata is fetched from Telegram API.
-2. File is downloaded using bot token.
-3. Saved to `DEFAULT_TORRENT_LOCATION`.
-4. Added via Transmission add-by-file RPC.
-5. Bot responds with add result.
+### `sort` (`so`) `<method>`
+- Purpose: set Transmission sort mode.
+- Methods: `id`, `name`, `age`, `size`, `progress`, `downspeed`, `upspeed`, `download`, `upload`, `ratio`.
+- Reverse: prefix with `rev` (example: `sort rev size`).
+- Help: `sort ?` or `sort help`.
 
-## 1.7 Move workflow details
+## 3.2 Filtering commands
 
-`move` command uses:
+### `downs` (`dg`)
+- List downloading torrents.
 
-- source: `TRANSMISSION_DONWNLOAD_LOCATION`
-- destination: `DEFAULT_MOVE_LOCATION`
-- state file: `moved.json` stored near destination (`../moved.json`)
+### `seeding` (`sd`)
+- List seeding torrents.
 
-Subcommands:
+### `paused` (`pa`)
+- List paused torrents.
 
-- `move` => list status of torrents vs source/destination state
-- `move all` => copy all not-yet-moved entries
-- `move <id> [id...]` => copy selected torrent IDs (or names)
-- `move reset` => clear only move records
-- `move clear` => clear destination content + reset records
-- `move ?` => help
+### `checking` (`ch`)
+- List torrents currently verifying.
 
-Behavior highlights:
+### `active` (`ac`)
+- List active torrents with current up/down rates and ratio.
 
-- Skips temp/partial files.
-- Uses SHA1 hash-based duplicate detection in destination.
-- Shows progress updates while copying.
+### `errors` (`er`)
+- List torrents with error state.
 
----
+### `search` (`se`) `<query...>`
+- Search torrents by name.
 
-## 2) Environment Variables
+## 3.3 Management commands
 
-## 2.1 Resolution order
+### `add` (`ad`) `<magnet|http(s)>`
+- Add torrent by magnet/http URL.
+- If URL tokens are split by spaces, bot re-joins args before submission.
 
-Configuration is loaded in this effective order:
+### `start` (`st`) `<id...|all>`
+- Start selected torrents or all.
+
+### `stop` (`sp`) `<id...|all>`
+- Stop selected torrents or all.
+
+### `check` (`ck`) `<id...|all>`
+- Verify selected torrents or all.
+
+### `del` (`rm`) `<id...>`
+- Remove torrent records only (keep data).
+
+### `deldata` `<id...>`
+- Remove torrent records and data.
+
+### `move` subcommands
+- `move`: show move status for torrents.
+- `move all`: copy all not-yet-moved eligible entries.
+- `move <id> [id2...]`: copy selected torrent IDs.
+- `move <name> [name2...]`: copy by source entry name.
+- `move reset`: clear move records file only.
+- `move clear`: delete destination content (except skipped/internal entries) and reset records.
+- `move ?`: show move help.
+
+Move behavior details:
+
+- Source directory: `DefaultDownloadLocation`, fallback `TRANSMISSION_DOWNLOAD_LOCATION`.
+- Destination: `DefaultMoveLocation`, fallback `DEFAULT_MOVE_LOCATION`.
+- State file: `../moved.json` relative to destination directory.
+- Skips hidden/temp/partial entries (`.*`, `.part`, `.crdownload`).
+- Computes SHA1 path hash to detect duplicates already present at destination.
+- Sends progress message updates during copy operation.
+
+## 3.4 Information commands
+
+### `info` (`in`) `<id...>`
+- Show detailed torrent info (size/progress/speeds/ratio/ETA/tracker list).
+- Supports live updates when enabled.
+
+### `trackers` (`tr`)
+- List trackers.
+
+### `stats` (`sa`)
+- Show current + cumulative Transmission stats.
+
+### `speed` (`ss`)
+- Show global download/upload speeds.
+- Supports live updates when enabled.
+
+### `count` (`co`)
+- Show counts by torrent status categories.
+
+## 3.5 Configuration commands
+
+### `downlimit` (`dl`) `<KB/s>`
+- Set global download speed limit.
+
+### `uplimit` (`ul`) `<KB/s>`
+- Set global upload speed limit.
+
+## 3.6 General commands
+
+### `help` (`h`, `?`)
+- Build and show grouped help from JSON categories + command metadata.
+
+### `version` (`ver`)
+- Show Transmission version + bot version (`v1.0.0` in source at time of writing).
+
+### `uptime`
+- Show host system uptime.
+
+### `diskusage` (`du`)
+- Show used/total usage for configured download location.
+
+
+
+## 4) Advanced runtime subsystems
+
+## 4.1 Output formatting model
+
+Each command has optional metadata fields in `commands.json`:
+
+- `output_format`: `markdown` or `plain`
+- `output_string`: `fmt.Sprintf`-style template
+- `list_output`: apply template per list row when true
+
+At runtime, the handler builds and uses maps keyed by canonical command name:
+
+- `OutputFormatByCommand`
+- `OutputStringByCommand`
+- `ListOutputByCommand`
+
+Relevant methods:
+
+- `FormatOutputString(...)`
+- `SendWithFormat(...)`
+- `SendWithPaginationFormat(...)`
+
+## 4.2 Pagination model
+
+Long messages are paginated in handler layer:
+
+- split threshold: ~750 runes/page
+- callback data prefix: `pg:`
+- buttons: `◀️ Prev`, `Next ▶️`
+- session TTL: 5 minutes
+- page footer format: `Page X/Y`
+
+Only authorized users can use callback navigation.
+
+## 4.3 Live task cancellation model
+
+For edit-loop style commands, handler uses keyed cancellable tasks:
+
+- `StartLiveTask(key)` cancels any existing task with same key
+- prevents overlapping stale loops in same chat/command scope
+- global controls:
+  - `NO_LIVE=true` disables live updates
+  - `UPDATE_MAX_ITERATIONS=0` effectively disables recurring live edits
+
+## 4.4 Completion notification poller
+
+Background poller in Telegram runtime:
+
+- interval: ~30 seconds
+- compares currently incomplete torrent IDs vs tracked set
+- when previously incomplete now complete: send grouped message
+- tracked state is persisted to `track.json`
+- chat IDs are reloaded periodically so newly authorized chats receive notifications
+
+## 4.5 Torrent document upload flow
+
+When user sends `.torrent` file:
+
+1. Get Telegram file metadata
+2. Download file using bot token URL
+3. Ensure `DEFAULT_TORRENT_LOCATION` exists
+4. Save file with safe `.torrent` filename
+5. Add torrent to Transmission via add-by-file RPC
+6. Return add result message
+
+If message is unknown command + document exists, this flow is used as fallback.
+
+
+
+## 5) Configuration and environment variables
+
+## 5.1 Resolution and precedence
+
+Effective load order:
 
 1. CLI flags
-2. `.env` (`.env`, then `../.env`)
-3. process environment variables
+2. `.env` in current project
+3. `.env` in parent directory
+4. process environment variables
 
-Important: environment values only fill fields that are still unset/default after CLI parsing.
+Important behavior:
 
-## 2.2 Required variables
+- env values only fill fields not already set by flags/defaults.
+- `RPC_URL` env value is applied when URL is still default (`http://localhost:9091/transmission/rpc`).
 
-- `TOKEN` (or `TT_BOTT`): Telegram bot token
-- `MASTER`: comma-separated Telegram usernames (without `@` preferred)
-- `USERNAME` (or `TR_AUTH`): Transmission RPC username
-- `PASSWORD`: Transmission RPC password
+## 5.2 Required variables
+
+- `TOKEN` or `TT_BOTT`: Telegram bot token
+- `MASTER`: comma-separated usernames (without `@` preferred)
+- `USERNAME` or `TR_AUTH`: Transmission username
+- `PASSWORD`: Transmission password
 - `RPC_URL`: Transmission RPC endpoint
 
-## 2.3 Optional variables
+## 5.3 Optional variables
 
-- `BOT_LOGFILE`: log output file path
+- `BOT_LOGFILE`: log file path
 - `DEFAULT_TORRENT_LOCATION`: where uploaded `.torrent` files are saved
-- `DEFAULT_DOWNLOAD_LOCATION`: source dir for move workflow
-- `DEFAULT_MOVE_LOCATION`: destination dir for move workflow
-- `NO_LIVE`: boolean (`true/false`) to disable live edits
-- `VERBOSE`: `1` or `true` enables debug logs
-- `REMOVE_ID_OLDER_THAN`: seconds; prunes stale chat IDs at startup
+- `DEFAULT_DOWNLOAD_LOCATION`: download/source directory
+- `TRANSMISSION_DOWNLOAD_LOCATION`: alternate/fallback download source variable
+- `DEFAULT_MOVE_LOCATION`: destination directory used by `move`
+- `NO_LIVE`: `true|false`
+- `VERBOSE`: `1` or `true`
+- `REMOVE_ID_OLDER_THAN`: seconds, prune old chat IDs at startup
 - `UPDATE_MAX_ITERATIONS`: integer `>= 0`
-  - `0` => disable live updates
-  - `>0` => cap live edit iterations per message
-- `TRANSMISSION_DONWNLOAD_LOCATION`: legacy fallback variable (spelling preserved intentionally)
 
-## 2.4 Validation and common pitfalls
+## 5.4 CLI flags
 
-- Bot startup fails if required values are missing.
+Primary flags (from `src/init.go`):
+
+- `-token`
+- `-master` (repeatable)
+- `-url`
+- `-username`
+- `-password`
+- `-logfile`
+- `-no-live`
+- `-verbose`
+
+## 5.5 Validation and common pitfalls
+
+- startup fails on missing required config values.
 - `UPDATE_MAX_ITERATIONS` must be `>= 0`.
-- `MASTER` names are normalized to lowercase and stripped of `@`.
-- `RPC_URL` from env only overrides default URL when URL is still default/unset from flags.
+- `DEFAULT_TORRENT_LOCATION` must exist/be writable for file upload flow.
+- `move` command requires both source and destination configuration.
+- `start.sh` requires `transmission-remote` in `PATH`.
 
----
 
-## 3) Further Developing the Bot
 
-## 3.1 High-level architecture
+## 6) Files, data, and persistence
 
-Main flow:
-
-- `src/main.go`: app bootstrap + signal handling
-- `src/init.go`: flags + env loading + client init
-- `src/telegram/telegram.go`: event loop, auth, dispatch, startup notifications, completion poller
-- `src/handlers/`: shared runtime behavior (formatting, pagination, live-task management)
-- `src/commands/`: command implementations
-- `src/utils/`: message sending, chat/tracked persistence, markdown/progress helpers
-
-## 3.2 Dispatch and extension model
-
-To add a new command cleanly:
-
-1. Implement command logic in `src/commands/<name>.go`.
-2. Add entry in `handlerMap` in `src/telegram/telegram.go`.
-3. Add metadata in `src/telegram/commands.json`:
-   - `name`, `aliases`, `command_category`, `description`
-   - `output_format`, `output_string`, `list_output`
-4. (Optional) add category in `src/telegram/categories.json`.
-5. Rebuild and test in Telegram chat.
-
-Tip: prefer reusing helper patterns from existing commands (`helpers/` package).
-
-## 3.3 Output formatting system
-
-Each command can be configured without code changes for output style:
-
-- `output_format`: markdown/plain
-- `output_string`: `fmt.Sprintf` template
-- `list_output`: whether template is applied per list item
-
-Runtime maps are built from JSON and consumed through:
-
-- `h.FormatOutputString(...)`
-- `h.SendWithFormat(...)`
-- `h.SendWithPaginationFormat(...)`
-
-## 3.4 Pagination subsystem
-
-Pagination is handler-driven:
-
-- long text is split into pages
-- inline callback buttons navigate pages
-- sessions are ephemeral (TTL-based)
-- callback data prefix: `pg:`
-
-Useful when adding commands that can produce long multi-line output.
-
-## 3.5 Live task cancellation model
-
-For commands with repeated edits:
-
-- use `StartLiveTask(key)` to ensure only one live loop per key
-- previous task with same key is cancelled
-- key examples: `speed:<chat>`, `info:<chat>:<torrentID>`
-
-This prevents overlapping edit loops and stale updates.
-
-## 3.6 Persistence model
+## 6.1 Main persistent files
 
 - `src/telegram/chat.json`: known chat IDs + timestamp
-- `src/telegram/track.json`: tracked incomplete torrents for completion notices
-- `data/moved.json` (path relative to move destination): move/copy history
+- `src/telegram/track.json`: tracked incomplete torrent IDs for completion notifications
+- `data/moved.json` (actual location derived from destination parent): move history
 
-Write path behavior is already safe/atomic for tracked IDs via utils helper.
+## 6.2 Runtime path resolution
 
-## 3.7 Practical development workflow
+Several files are loaded using fallback path candidates (`resolveExistingPath`), allowing run from different working directories.
 
-- Install deps in `src/`: `go mod download`
-- Build binary: `go build -o ../bin/telegram-torrent-bot`
-- Run: `./start.sh` or `./bin/telegram-torrent-bot`
-- Enable verbose mode while developing: `VERBOSE=1` or `-verbose`
+## 6.3 Log output
 
-## 3.8 Conventions to keep
+- default logger writes to stdout
+- if `BOT_LOGFILE` or `-logfile` set, logger writes to both stdout and file
 
-- Keep command names/aliases in sync between code and JSON.
-- Preserve markdown escaping for torrent/file names.
-- Reuse existing error style (`*command:* error`) for consistency.
-- Keep new persistence files in predictable paths and document them.
 
+
+## 7) Project architecture for developers
+
+## 7.1 Key modules
+
+- `src/main.go`: app bootstrap, defaults, signal-aware shutdown context
+- `src/init.go`: flags/env load, Transmission and Telegram initialization
+- `src/telegram/telegram.go`: update loop, authorization, command dispatch, startup + completion logic
+- `src/handlers/`: output formatting, pagination, live task controls
+- `src/commands/`: individual command implementations
+- `src/utils/`: markdown escaping, persistence helpers, sending/progress helpers
+
+## 7.2 Add a new command (clean workflow)
+
+1. Create implementation in `src/commands/<name>.go`.
+2. Register canonical command in `handlerMap` in `src/telegram/telegram.go`.
+3. Add command metadata to `src/telegram/commands.json`:
+   - `name`, `aliases`, `command_category`, `description`
+   - optional `example`, `output_format`, `output_string`, `list_output`
+4. Ensure category exists in `src/telegram/categories.json`.
+5. Build and run, test from Telegram chat.
+
+## 7.3 Compatibility and style conventions
+
+- keep command names and aliases synchronized between code and JSON metadata.
+- preserve markdown escaping for user/torrent/file-visible text.
+- preserve existing message style (`*command:* ...`) for consistency.
+- avoid introducing new persistence files without documenting path and lifecycle.

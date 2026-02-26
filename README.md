@@ -7,7 +7,7 @@ A Telegram bot to control a Transmission daemon from chat.
 It supports listing/filtering torrents, start/stop/check/delete actions, adding torrents (URL/magnet and uploaded `.torrent` files), speed limits, disk usage, move/copy workflows, and automatic completion notifications.
 
 ### Demo
-![](https://github.com/tudisco2005/telegram-torrent-bot/blob/main/demo.mp4)
+![demo_gif](https://github.com/tudisco2005/telegram-torrent-bot/blob/main/demo.mp4)
 
 ## Wiki
 

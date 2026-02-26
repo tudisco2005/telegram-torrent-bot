@@ -112,7 +112,7 @@ func LoadEnvironmentConfig(cfg *EnvConfig) error {
 			*cfg.DefaultDownloadLocation = dir
 		}
 		// Secondary: support Transmission-specific env var name used in .env
-		if dir := os.Getenv("TRANSMISSION_DONWNLOAD_LOCATION"); dir != "" && *cfg.DefaultDownloadLocation == "" {
+		if dir := os.Getenv("TRANSMISSION_DOWNLOAD_LOCATION"); dir != "" && *cfg.DefaultDownloadLocation == "" {
 			*cfg.DefaultDownloadLocation = dir
 		}
 	}

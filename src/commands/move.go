@@ -18,12 +18,12 @@ import (
 )
 
 // Move copies completed downloads from the Transmission download directory
-// (DefaultDownloadLocation / TRANSMISSION_DONWNLOAD_LOCATION) to DEFAULT_MOVE_LOCATION
+// (DefaultDownloadLocation / TRANSMISSION_DOWNLOAD_LOCATION) to DEFAULT_MOVE_LOCATION
 func Move(h *handlers.Handler, ud tgbotapi.Update, tokens []string, cmd string) {
 
 	src := h.DefaultDownloadLocation
 	if src == "" {
-		src = os.Getenv("TRANSMISSION_DONWNLOAD_LOCATION")
+		src = os.Getenv("TRANSMISSION_DOWNLOAD_LOCATION")
 	}
 	dst := h.DefaultMoveLocation
 	if dst == "" {

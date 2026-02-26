@@ -81,6 +81,12 @@ If no custom sort is set, Transmission default ordering is used.
 ### `plist` (`pls`)
 - Purpose: pretty list with progress bars + ETA.
 - Output: markdown-rich multi-line block per torrent.
+- Default (`plist`): shows only not-complete and not-stopped torrents (active/downloading set).
+- `plist all`: shows all torrents (active, stopped, complete).
+- `plist stopped` (or `plist paused`): shows paused/stopped and not-complete torrents.
+- `plist ?` or `plist help`: shows usage help.
+- Optional trailing text filters by name (case-insensitive substring).
+- Optional inline sort options are supported; without inline sort, `plist all` is grouped as active -> stopped -> complete.
 
 ### `head` (`he`) `[n]`
 - Purpose: list first `n` torrents.

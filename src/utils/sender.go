@@ -219,3 +219,57 @@ func writeJSONAtomic(path string, v interface{}) error {
 
 	return nil
 }
+
+// CleanupStaleTempJSONFiles removes stale temporary JSON files created by writeJSONAtomic.
+// It scans the directory of each provided path and deletes files named .tmp-json-* older than maxAge.
+func CleanupStaleTempJSONFiles(maxAge time.Duration, paths ...string) (int, error) {
+	if maxAge < 0 {
+		maxAge = 0
+	}
+
+	seenDirs := make(map[string]struct{})
+	now := time.Now()
+	removed := 0
+
+	for _, path := range paths {
+		dir := filepath.Dir(path)
+		if dir == "" {
+			continue
+		}
+		if _, ok := seenDirs[dir]; ok {
+			continue
+		}
+		seenDirs[dir] = struct{}{}
+
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return removed, err
+		}
+
+		for _, entry := range entries {
+			name := entry.Name()
+			if !strings.HasPrefix(name, ".tmp-json-") {
+				continue
+			}
+
+			info, err := entry.Info()
+			if err != nil {
+				continue
+			}
+			if maxAge > 0 && now.Sub(info.ModTime()) < maxAge {
+				continue
+			}
+
+			fullPath := filepath.Join(dir, name)
+			if err := os.Remove(fullPath); err != nil && !os.IsNotExist(err) {
+				return removed, err
+			}
+			removed++
+		}
+	}
+
+	return removed, nil
+}

@@ -109,6 +109,14 @@ func ReceiveTorrent(h *handlers.Handler, ud tgbotapi.Update) {
 		return
 	}
 
+	if torrent, terr := h.Client.GetTorrent(added.ID); terr == nil {
+		if torrent.PercentDone < 1.0 && torrent.Status != transmission.StatusStopped {
+			helpers.AddTrackedIDs(h, []int{added.ID})
+		}
+	} else {
+		h.Logger.Printf("[DEBUG] ReceiveTorrent: failed to inspect torrent id=%d for tracking: %v", added.ID, terr)
+	}
+
 	safeName := utils.EscapeFileMD(added.Name)
 	msg := h.FormatOutputString("add", safeName)
 	h.SendWithFormat(ud.Message.Chat.ID, msg, "add")

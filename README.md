@@ -6,6 +6,9 @@ A Telegram bot to control a Transmission daemon from chat.
 
 It supports listing/filtering torrents, start/stop/check/delete actions, adding torrents (URL/magnet and uploaded `.torrent` files), speed limits, disk usage, move/copy workflows, and automatic completion notifications.
 
+### Demo
+![](https://github.com/tudisco2005/telegram-torrent-bot/blob/main/demo.mp4)
+
 ## Wiki
 
 - See [`WIKI.md`](./WIKI.md) for detailed usage, environment variables, and development internals.
@@ -98,7 +101,7 @@ It also treats a bare magnet/http URL message as an implicit `add` command.
 | Command | Aliases | Category | Description | Example |
 |---|---|---|---|---|
 | `/list` | `/li`, `/ls` | list | Lists all the torrents | - |
-| `/plist` | `/pls` | list | Pretty list with progress bars | - |
+| `/plist` | `/pls` | list | Pretty list with progress bars (default: active/downloading only) | `/plist all` |
 | `/head` | `/he` | list | Lists the first n torrents | `/head 10` |
 | `/tail` | `/ta` | list | Lists the last n torrents | `/tail 10` |
 | `/downs` | `/dg` | filter | Lists downloading torrents | - |
@@ -133,6 +136,15 @@ It also treats a bare magnet/http URL message as an implicit `add` command.
 
 - `id`, `name`, `age`, `size`, `progress`, `downspeed`, `upspeed`, `download`, `upload`, `ratio`
 - Prefix with `rev` for reverse order (e.g. `sort rev size`)
+
+### `/plist` behavior
+
+- `plist` or `pls` — list only not-complete and not-stopped torrents
+- `plist all` — list all torrents (active, stopped, complete)
+- `plist stopped` or `plist paused` — list stopped/paused and not-complete torrents
+- `plist ?` or `plist help` — show usage help
+- `plist [mode] <name filter>` — optional case-insensitive name filter
+- `plist all` without inline sort groups by state: active -> stopped -> complete
 
 ### `/move` subcommands
 

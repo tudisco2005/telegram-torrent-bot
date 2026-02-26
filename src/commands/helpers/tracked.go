@@ -70,3 +70,9 @@ func RemoveTrackedIDs(h *handlers.Handler, ids []int) {
 		h.Logger.Printf("[WARNING] failed to update %s: %v", h.CompletedFilePath, err)
 	}
 }
+
+func ClearTrackedIDs(h *handlers.Handler) {
+	if err := utils.SaveTracked(h.CompletedFilePath, []int{}); err != nil {
+		h.Logger.Printf("[WARNING] failed to clear %s: %v", h.CompletedFilePath, err)
+	}
+}

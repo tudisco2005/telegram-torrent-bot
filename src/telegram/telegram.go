@@ -235,6 +235,12 @@ func Start(ctx context.Context, cfg *BotConfig) {
 		"./telegram/chat.json",
 	)
 
+	if removed, err := utils.CleanupStaleTempJSONFiles(5*time.Minute, trackPath, chatPath); err != nil {
+		cfg.Logger.Printf("[WARNING] Failed to clean stale temp JSON files: %v", err)
+	} else if removed > 0 {
+		cfg.Logger.Printf("[INFO] Removed %d stale temp JSON file(s)", removed)
+	}
+
 	h := &handlers.Handler{
 		Bot:                     cfg.Bot,
 		Client:                  cfg.Client,
@@ -312,7 +318,7 @@ func Start(ctx context.Context, cfg *BotConfig) {
 		ticker := time.NewTicker(pollInterval)
 		defer ticker.Stop()
 
-		// load persisted tracked IDs from disk (tracked = incomplete torrent IDs)
+		// load persisted tracked IDs from disk (tracked IDs are managed by commands)
 		trackedSlice, err := utils.LoadTracked(trackPath)
 		if err != nil {
 			cfg.Logger.Printf("[DEBUG] completion poll: failed to load tracked IDs: %v", err)
@@ -322,9 +328,6 @@ func Start(ctx context.Context, cfg *BotConfig) {
 		for _, id := range trackedSlice {
 			trackedIncomplete[id] = true
 		}
-		// First poll after startup synchronizes state, but still emits completion
-		// notifications for IDs that were tracked as incomplete and are now done.
-		bootstrapped := false
 
 		persistTracked := func() {
 			ids := make([]int, 0, len(trackedIncomplete))
@@ -345,6 +348,18 @@ func Start(ctx context.Context, cfg *BotConfig) {
 			case <-ticker.C:
 			}
 
+			// Sync from disk each cycle so command-side updates (e.g. stop all)
+			// are reflected immediately and not overwritten by stale memory state.
+			if trackedSlice, err := utils.LoadTracked(trackPath); err == nil {
+				diskTracked := make(map[int]bool, len(trackedSlice))
+				for _, id := range trackedSlice {
+					diskTracked[id] = true
+				}
+				trackedIncomplete = diskTracked
+			} else {
+				cfg.Logger.Printf("[DEBUG] completion poll: failed to reload tracked IDs: %v", err)
+			}
+
 			// fetch current torrents
 			torrents, err := cfg.Client.GetTorrents()
 			if err != nil {
@@ -359,20 +374,26 @@ func Start(ctx context.Context, cfg *BotConfig) {
 			}
 			chatIDs := utils.GetIDs(chatObjs)
 
-			// collect newly completed torrents in this iteration and send a grouped message
-			newLines := make([]string, 0)
-			currentIncomplete := make(map[int]bool, len(torrents))
+			// collect newly completed torrents from tracked IDs and prune tracked state.
+			torrentByID := make(map[int]*transmission.Torrent, len(torrents))
 			for _, t := range torrents {
-				if t.PercentDone < 1.0 {
-					currentIncomplete[t.ID] = true
+				torrentByID[t.ID] = t
+			}
+
+			newLines := make([]string, 0)
+			nextTracked := make(map[int]bool, len(trackedIncomplete))
+			for id := range trackedIncomplete {
+				t, ok := torrentByID[id]
+				if !ok {
+					// torrent no longer exists; drop stale tracked id
 					continue
 				}
-
-				// consider a torrent complete when PercentDone >= 1.0
-				if trackedIncomplete[t.ID] {
+				if t.PercentDone >= 1.0 {
 					line := fmt.Sprintf("`<%d>` %s", t.ID, utils.EscapeFileMD(t.Name))
 					newLines = append(newLines, line)
+					continue
 				}
+				nextTracked[id] = true
 			}
 
 			if len(newLines) > 0 {
@@ -382,20 +403,11 @@ func Start(ctx context.Context, cfg *BotConfig) {
 				}
 			}
 
-			if !bootstrapped {
-				// persist first synchronized state immediately so next poll can
-				// reliably detect incomplete->complete transitions.
-				trackedIncomplete = currentIncomplete
-				persistTracked()
-				bootstrapped = true
-				continue
-			}
-
 			changed := false
-			if len(currentIncomplete) != len(trackedIncomplete) {
+			if len(nextTracked) != len(trackedIncomplete) {
 				changed = true
 			} else {
-				for id := range currentIncomplete {
+				for id := range nextTracked {
 					if !trackedIncomplete[id] {
 						changed = true
 						break
@@ -404,7 +416,7 @@ func Start(ctx context.Context, cfg *BotConfig) {
 			}
 
 			if changed {
-				trackedIncomplete = currentIncomplete
+				trackedIncomplete = nextTracked
 				persistTracked()
 			}
 		}

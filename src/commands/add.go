@@ -51,7 +51,19 @@ func Add(h *handlers.Handler, ud tgbotapi.Update, tokens []string, cmd string) {
 			link,
 			"*Added magnet*: metadata not available yet — letting Transmission fetch metadata",
 		)
-		if metadataPending || blocked {
+		if blocked {
+			continue
+		}
+
+		if torrent, terr := h.Client.GetTorrent(added.ID); terr == nil {
+			if torrent.PercentDone < 1.0 && torrent.Status != transmission.StatusStopped {
+				helpers.AddTrackedIDs(h, []int{added.ID})
+			}
+		} else {
+			h.Logger.Printf("[DEBUG] Add: failed to inspect torrent id=%d for tracking: %v", added.ID, terr)
+		}
+
+		if metadataPending {
 			continue
 		}
 

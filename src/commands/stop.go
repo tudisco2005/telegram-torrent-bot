@@ -23,16 +23,10 @@ func Stop(h *handlers.Handler, ud tgbotapi.Update, tokens []string, cmd string) 
 			h.SendWithFormat(ud.Message.Chat.ID, "*stop:* "+err.Error(), cmd)
 			return
 		}
-		incompleteIDs := make([]int, 0)
 		for _, t := range torrents {
 			h.Client.StopTorrent(t.ID)
-			if t.PercentDone < 1.0 {
-				incompleteIDs = append(incompleteIDs, t.ID)
-			}
 		}
-		if len(incompleteIDs) > 0 {
-			helpers.RemoveTrackedIDs(h, incompleteIDs)
-		}
+		helpers.ClearTrackedIDs(h)
 		h.SendWithFormat(ud.Message.Chat.ID, "Stopped all torrents", cmd)
 		return
 	}
